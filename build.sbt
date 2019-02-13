@@ -58,6 +58,7 @@ lazy val commonDependencies = Seq(
   Dependencies.json4sJackson,
   Dependencies.s3,
   Dependencies.dynamodb,
+  Dependencies.enumeratum,
   Dependencies.igluClient,
   Dependencies.eventsManifest,
   // Scala (test-only)

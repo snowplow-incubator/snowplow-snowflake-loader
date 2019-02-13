@@ -14,7 +14,7 @@ package com.snowplowanalytics.snowflake.core
 
 import org.specs2.Specification
 import com.snowplowanalytics.snowflake.core.Config.S3Folder.{coerce => s3}
-import com.snowplowanalytics.snowflake.core.Config.{CliLoaderConfiguration, CliTransformerConfiguration}
+import com.snowplowanalytics.snowflake.core.Config.{CliLoaderConfiguration, CliTransformerConfiguration, SetupSteps}
 import com.snowplowanalytics.snowplow.eventsmanifest.DynamoDbConfig
 
 class ConfigSpec extends Specification {
@@ -31,6 +31,8 @@ class ConfigSpec extends Specification {
   Parse valid load without credentials $e9
   Parse valid base64-encoded events manifest configuration $e10
   Parse valid configuration with optional params $e11
+  Parse valid configuration with set setup steps $e12
+  Fail to parse configuration with bad setup steps $e13
   """
 
   val configUrl = getClass.getResource("/valid-config.json")
@@ -75,6 +77,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       false)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -110,6 +113,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       true)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -147,6 +151,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       true)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -199,6 +204,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       false)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -236,6 +242,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       true)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -270,6 +277,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       "",
+      Set(),
       true)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
@@ -349,8 +357,85 @@ class ConfigSpec extends Specification {
         maxError = Some(10000),
         jdbcHost = Some("snowplow.us-west-1.azure.snowflakecomputing.com")),
       "",
+      Set(),
       true)
 
     Config.parseLoaderCli(args) must beSome(Right(expected))
+  }
+
+  def e12 = {
+    val args = List(
+      "setup",
+
+      "--resolver", resolverBase64,
+      "--config", "eyAic2NoZW1hIjogImlnbHU6Y29tLnNub3dwbG93YW5hbHl0aWNzLnNub3dwbG93LnN0b3JhZ2Uvc25vd2ZsYWtlX2NvbmZpZy9qc29uc2NoZW1hLzEtMC0wIiwgImRhdGEiOiB7ICJuYW1lIjogIlNub3dmbGFrZSIsICJhdXRoIjogeyJyb2xlQXJuIjogImFybjphd3M6aWFtOjo3MTkxOTc0MzU5OTU6cm9sZS9Tbm93Zmxha2VSb2xlIiwgInNlc3Npb25EdXJhdGlvbiI6IDkwMH0sICJhd3NSZWdpb24iOiAidXMtZWFzdC0xIiwgIm1hbmlmZXN0IjogInNub3dmbGFrZS1tYW5pZmVzdCIsICJzbm93Zmxha2VSZWdpb24iOiAidXMtd2VzdC0xIiwgImRhdGFiYXNlIjogInRlc3RfZGIiLCAiaW5wdXQiOiAiczM6Ly9zbm93Zmxha2UvaW5wdXQvIiwgInN0YWdlIjogInNvbWVfc3RhZ2UiLCAic3RhZ2VVcmwiOiAiczM6Ly9zbm93Zmxha2Uvb3V0cHV0LyIsICJ3YXJlaG91c2UiOiAic25vd3Bsb3dfd2giLCAic2NoZW1hIjogImF0b21pYyIsICJhY2NvdW50IjogInNub3dwbG93IiwgInVzZXJuYW1lIjogImFudG9uIiwgInBhc3N3b3JkIjogIlN1cGVyc2VjcmV0MiIsICJwdXJwb3NlIjogIkVOUklDSEVEX0VWRU5UUyIgfSB9",
+      "--base64",
+      "--skip", "schema,stage,table"
+    ).toArray
+
+    val expected = CliLoaderConfiguration(
+      Config.SetupCommand,
+      Config(
+        auth = Config.RoleAuth(
+          roleArn = "arn:aws:iam::719197435995:role/SnowflakeRole",
+          sessionDuration = 900
+        ),
+        awsRegion = "us-east-1",
+        manifest = "snowflake-manifest",
+        stage = "some_stage",
+        stageUrl = s3("s3://snowflake/output/"),
+        snowflakeRegion = "us-west-1",
+        schema = "atomic",
+        username = "anton",
+        password = Config.PlainText("Supersecret2"),
+        input = s3("s3://snowflake/input/"),
+        account = "snowplow",
+        warehouse = "snowplow_wh",
+        database = "test_db",
+        maxError = None,
+        jdbcHost = None),
+      "",
+      Set(SetupSteps.Schema, SetupSteps.Stage, SetupSteps.Table),
+      false)
+
+    Config.parseLoaderCli(args) must beSome(Right(expected))
+  }
+
+  def e13 = {
+    val args = List(
+      "setup",
+
+      "--resolver", resolverBase64,
+      "--config", "eyAic2NoZW1hIjogImlnbHU6Y29tLnNub3dwbG93YW5hbHl0aWNzLnNub3dwbG93LnN0b3JhZ2Uvc25vd2ZsYWtlX2NvbmZpZy9qc29uc2NoZW1hLzEtMC0wIiwgImRhdGEiOiB7ICJuYW1lIjogIlNub3dmbGFrZSIsICJhdXRoIjogeyJyb2xlQXJuIjogImFybjphd3M6aWFtOjo3MTkxOTc0MzU5OTU6cm9sZS9Tbm93Zmxha2VSb2xlIiwgInNlc3Npb25EdXJhdGlvbiI6IDkwMH0sICJhd3NSZWdpb24iOiAidXMtZWFzdC0xIiwgIm1hbmlmZXN0IjogInNub3dmbGFrZS1tYW5pZmVzdCIsICJzbm93Zmxha2VSZWdpb24iOiAidXMtd2VzdC0xIiwgImRhdGFiYXNlIjogInRlc3RfZGIiLCAiaW5wdXQiOiAiczM6Ly9zbm93Zmxha2UvaW5wdXQvIiwgInN0YWdlIjogInNvbWVfc3RhZ2UiLCAic3RhZ2VVcmwiOiAiczM6Ly9zbm93Zmxha2Uvb3V0cHV0LyIsICJ3YXJlaG91c2UiOiAic25vd3Bsb3dfd2giLCAic2NoZW1hIjogImF0b21pYyIsICJhY2NvdW50IjogInNub3dwbG93IiwgInVzZXJuYW1lIjogImFudG9uIiwgInBhc3N3b3JkIjogIlN1cGVyc2VjcmV0MiIsICJwdXJwb3NlIjogIkVOUklDSEVEX0VWRU5UUyIgfSB9",
+      "--base64",
+      "--skip", "schema,stage,foo,bar"
+    ).toArray
+
+    val expected = CliLoaderConfiguration(
+      Config.SetupCommand,
+      Config(
+        auth = Config.RoleAuth(
+          roleArn = "arn:aws:iam::719197435995:role/SnowflakeRole",
+          sessionDuration = 900
+        ),
+        awsRegion = "us-east-1",
+        manifest = "snowflake-manifest",
+        stage = "some_stage",
+        stageUrl = s3("s3://snowflake/output/"),
+        snowflakeRegion = "us-west-1",
+        schema = "atomic",
+        username = "anton",
+        password = Config.PlainText("Supersecret2"),
+        input = s3("s3://snowflake/input/"),
+        account = "snowplow",
+        warehouse = "snowplow_wh",
+        database = "test_db",
+        maxError = None,
+        jdbcHost = None),
+      "",
+      Set(),
+      false)
+
+    Config.parseLoaderCli(args) must beNone
   }
 }

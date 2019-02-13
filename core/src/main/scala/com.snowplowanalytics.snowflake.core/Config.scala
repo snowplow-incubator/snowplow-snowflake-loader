@@ -24,6 +24,8 @@ import org.json4s.JsonAST.{JInt, JNull}
 import org.json4s.{CustomSerializer, JObject, JString, JValue, MappingException}
 import org.json4s.jackson.JsonMethods.parse
 
+import enumeratum._
+
 import com.snowplowanalytics.iglu.client.Resolver
 import com.snowplowanalytics.iglu.client.validation.ValidatableJValue.validate
 import com.snowplowanalytics.snowflake.generated.ProjectMetadata
@@ -56,8 +58,22 @@ object Config {
   case object SetupCommand extends Command
   case object MigrateCommand extends Command
 
-  case class RawCliLoader(command: String, loaderConfig: String, resolver: String, loaderVersion: String, dryRun: Boolean, base64: Boolean)
-  case class CliLoaderConfiguration(command: Command, loaderConfig: Config, loaderVersion: String, dryRun: Boolean)
+  sealed trait SetupSteps extends EnumEntry
+
+  object SetupSteps extends Enum[SetupSteps] {
+    val values = findValues
+
+    case object Schema extends SetupSteps
+    case object Table extends SetupSteps
+    case object Warehouse extends SetupSteps
+    case object FileFormat extends SetupSteps
+    case object Stage extends SetupSteps
+  }
+
+  implicit val setupStepsRead: scopt.Read[SetupSteps] = scopt.Read.reads(SetupSteps.withNameInsensitive)
+
+  case class RawCliLoader(command: String, loaderConfig: String, resolver: String, loaderVersion: String, skip: Set[SetupSteps], dryRun: Boolean, base64: Boolean)
+  case class CliLoaderConfiguration(command: Command, loaderConfig: Config, loaderVersion: String, skip: Set[SetupSteps], dryRun: Boolean)
 
   case class RawCliTransformer(loaderConfig: String, resolver: String, eventsManifestConfig: Option[String], inbatch: Boolean)
   case class CliTransformerConfiguration(loaderConfig: Config, eventsManifestConfig: Option[DynamoDbConfig], inbatch: Boolean)
@@ -137,7 +153,7 @@ object Config {
       json <- parseJsonFile(rawConfig.loaderConfig, rawConfig.base64)
       validConfig <- validate(json, true)(resolver).toEither.leftMap { x => s"Validation error: ${x.list.mkString(", ")}" }
       config <- extract(validConfig)
-    } yield CliLoaderConfiguration(command, config, rawConfig.loaderVersion, rawConfig.dryRun)
+    } yield CliLoaderConfiguration(command, config, rawConfig.loaderVersion, rawConfig.skip, rawConfig.dryRun)
   }
 
   /** Validate raw transformer's CLI configuration  */
@@ -159,13 +175,18 @@ object Config {
 
 
   /** Starting raw value, required by `parser` */
-  private val rawCliLoader = RawCliLoader("noop", "", "", "", false, false)
+  private val rawCliLoader = RawCliLoader("noop", "", "", "", Set(), false, false)
   private val loaderCliParser = new scopt.OptionParser[RawCliLoader](ProjectMetadata.name + "-" + ProjectMetadata.version + ".jar") {
     head(ProjectMetadata.name, ProjectMetadata.version)
 
     cmd("setup")
       .action((_, c) => c.copy(command = "setup"))
       .text("Perform initialization instead of loading")
+      .children(
+        opt[Seq[SetupSteps]]("skip")
+          .action((x, c) => c.copy(skip = x.toSet))
+          .text(s"A comma-separated list of setup steps to skip. Possible values: ${SetupSteps.values.mkString(", ")}")
+      )
 
     cmd("migrate")
       .action((_, c) => c.copy(command = "migrate"))

@@ -17,13 +17,13 @@ import  com.snowplowanalytics.snowflake.core.Config
 object Main {
   def main(args: Array[String]): Unit = {
     Config.parseLoaderCli(args) match {
-      case Some(Right(config @ Config.CliLoaderConfiguration(Config.LoadCommand, _, _, _))) =>
+      case Some(Right(config @ Config.CliLoaderConfiguration(Config.LoadCommand, _, _, _, _))) =>
         println("Loading...")
         Loader.run(config)
-      case Some(Right(config @ Config.CliLoaderConfiguration(Config.SetupCommand, _, _, _))) =>
+      case Some(Right(config @ Config.CliLoaderConfiguration(Config.SetupCommand, _, _, skip, _))) =>
         println("Setting up...")
-        Initializer.run(config.loaderConfig)
-      case Some(Right(config @ Config.CliLoaderConfiguration(Config.MigrateCommand, _, loaderVersion, _))) =>
+        Initializer.run(config.loaderConfig, skip)
+      case Some(Right(config @ Config.CliLoaderConfiguration(Config.MigrateCommand, _, loaderVersion, _, _))) =>
         println("Migrating...")
         Migrator.run(config.loaderConfig, loaderVersion)
       case Some(Left(error)) =>

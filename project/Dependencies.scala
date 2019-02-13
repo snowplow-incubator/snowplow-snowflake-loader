@@ -25,6 +25,7 @@ object Dependencies {
     val analyticsSdk     = "0.2.1"
     val json4sJackson    = "3.2.11"
     val cats             = "0.9.0"
+    val enumeratum       = "1.5.13"
     val igluClient       = "0.5.0"
     val eventsManifest   = "0.1.0"
     // Scala (test only)
@@ -48,6 +49,7 @@ object Dependencies {
   val analyticsSdk     = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
   val json4sJackson    = "org.json4s"            %% "json4s-jackson"               % V.json4sJackson
   val cats             = "org.typelevel"         %% "cats-core"                    % V.cats
+  val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
   val igluClient       = "com.snowplowanalytics" %% "iglu-scala-client"            % V.igluClient
   val eventsManifest   = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
 
