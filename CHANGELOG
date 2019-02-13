@@ -1,3 +1,8 @@
+Version 0.4.1 (2019-02-22)
+--------------------------
+Make it possible to selectively skip setup steps (#78)
+Revert VARCHAR precision removal (#80)
+
 Version 0.4.0 (2019-01-16)
 --------------------------
 Add in-batch natural deduplication (#48)

@@ -45,7 +45,7 @@ limitations under the License.
 [travis]: https://travis-ci.org/snowplow/snowplowsnowflaketransformer
 [travis-image]: https://travis-ci.org/snowplow/snowplowsnowflaketransformer.png?branch=master
 
-[release-image]: http://img.shields.io/badge/release-0.4.0-blue.svg?style=flat
+[release-image]: http://img.shields.io/badge/release-0.4.1-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplowsnowflaketransformer/releases
 
 [snowflake]: https://www.snowflake.com/
