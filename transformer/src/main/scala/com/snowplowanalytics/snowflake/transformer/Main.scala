@@ -38,7 +38,7 @@ object Main extends IOApp {
 
   def run(args: List[String]): IO[ExitCode] = {
     Cli.Transformer.parse(args).value.flatMap {
-      case Right(Cli.Transformer(appConfig, igluClient, inbatch, eventsManifestConfig)) =>
+      case Right(Cli.Transformer(appConfig, igluClient, inbatch, eventsManifestConfig, inputCompressionFormat)) =>
 
         // Always use EMR Role role for manifest-access
         for {
@@ -61,7 +61,9 @@ object Main extends IOApp {
           exitCode <- runFolders match {
             case Right(folders) =>
               val configs = folders.map(S3Config(appConfig.input, appConfig.stageUrl, appConfig.badOutputUrl, _))
-              TransformerJob.run(spark, manifest, appConfig.manifest, configs, eventsManifestConfig, inbatch, atomic).as(ExitCode.Success)
+              TransformerJob.run(spark, manifest, appConfig.manifest, configs, eventsManifestConfig, inbatch, atomic,
+                inputCompressionFormat
+              ).as(ExitCode.Success)
             case Left(error) =>
               die(s"Cannot get list of unprocessed folders\n$error")
           }

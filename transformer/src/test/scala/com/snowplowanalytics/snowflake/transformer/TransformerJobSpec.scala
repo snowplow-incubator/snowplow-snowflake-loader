@@ -32,8 +32,8 @@ import cats.syntax.either._
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.iglu.client.Resolver
-
-import com.snowplowanalytics.snowflake.core.{ Cli, idClock }
+import com.snowplowanalytics.snowflake.core.Cli.CompressionFormat
+import com.snowplowanalytics.snowflake.core.{Cli, idClock}
 import com.snowplowanalytics.snowflake.transformer.TransformerJobConfig.FSConfig
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 
@@ -238,7 +238,7 @@ trait TransformerJobSpec extends Specification with BeforeAfterAll {
       val badOutput = if (badRowsShouldBeStored) Some(dirs.badRows.toString) else None
       val eventManifestConfig = if (crossBatchDedup) Some(duplicateStorageConfig) else None
       val config = FSConfig(input.toString, dirs.output.toString, badOutput)
-      TransformerJob.process(spark, config, eventManifestConfig, inBatchDedup, atomic)
+      TransformerJob.process(spark, config, eventManifestConfig, inBatchDedup, atomic, Some(CompressionFormat.None))
       deleteRecursively(input)
   }
   override def afterAll(): Unit = {

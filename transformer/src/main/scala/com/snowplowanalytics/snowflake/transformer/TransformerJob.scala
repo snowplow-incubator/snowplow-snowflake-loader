@@ -26,7 +26,10 @@ import com.snowplowanalytics.iglu.core.{SchemaKey, SelfDescribingData}
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
+
+import com.snowplowanalytics.snowflake.core.Cli.CompressionFormat
 import com.snowplowanalytics.snowflake.core.ProcessManifest
 import com.snowplowanalytics.snowflake.transformer.singleton.EventsManifestSingleton
 
@@ -62,12 +65,12 @@ object TransformerJob {
   )
 
   /** Process all directories, saving state into DynamoDB */
-  def run(spark: SparkSession, manifest: ProcessManifest[IO], tableName: String, jobConfigs: List[TransformerJobConfig], eventsManifestConfig: Option[EventsManifestConfig], inbatch: Boolean, atomicSchema: Schema): IO[Unit] =
+  def run(spark: SparkSession, manifest: ProcessManifest[IO], tableName: String, jobConfigs: List[TransformerJobConfig], eventsManifestConfig: Option[EventsManifestConfig], inbatch: Boolean, atomicSchema: Schema, inputCompressionFormat: Option[CompressionFormat]): IO[Unit] =
     jobConfigs.traverse_ { jobConfig =>
       for {
         _ <- IO(System.out.println(s"Snowflake Transformer: processing ${jobConfig.runId}. ${System.currentTimeMillis()}"))
         _ <- manifest.add(tableName, jobConfig.runId)
-        shredTypes <- IO(process(spark, jobConfig, eventsManifestConfig, inbatch, atomicSchema))
+        shredTypes <- IO(process(spark, jobConfig, eventsManifestConfig, inbatch, atomicSchema, inputCompressionFormat))
         _ <- manifest.markProcessed(tableName, jobConfig.runId, shredTypes, jobConfig.goodOutput)
         _ <- IO(System.out.println(s"Snowflake Transformer: processed ${jobConfig.runId}. ${System.currentTimeMillis()}"))
       } yield ()
@@ -84,7 +87,7 @@ object TransformerJob {
     * @param atomicSchema         map of field names to maximum lengths
     * @return list of discovered shredded types
     */
-  def process(spark: SparkSession, jobConfig: TransformerJobConfig, eventsManifestConfig: Option[EventsManifestConfig], inbatch: Boolean, atomicSchema: Schema) = {
+  def process(spark: SparkSession, jobConfig: TransformerJobConfig, eventsManifestConfig: Option[EventsManifestConfig], inbatch: Boolean, atomicSchema: Schema, inputCompressionFormat: Option[CompressionFormat]) = {
     import spark.implicits._
 
     // Decide whether bad rows will be stored or not
@@ -96,8 +99,20 @@ object TransformerJob {
     val keysAggregator = new StringSetAccumulator
     sc.register(keysAggregator)
 
-    val inputRDD = sc
-      .textFile(jobConfig.input)
+    val linesRDD = inputCompressionFormat match {
+      case Some(CompressionFormat.LZO) =>
+        sc.newAPIHadoopFile(
+          jobConfig.input,
+          classOf[com.hadoop.mapreduce.LzoTextInputFormat],
+          classOf[org.apache.hadoop.io.LongWritable],
+          classOf[org.apache.hadoop.io.Text]
+        ).map(_._2.toString)
+
+      case _ =>
+        sc.textFile(jobConfig.input)
+    }
+
+    val inputRDD = linesRDD
       .map { line =>
         for {
           event <- Transformer.jsonify(line)

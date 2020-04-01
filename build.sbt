@@ -43,10 +43,12 @@ lazy val transformer = project
   .settings(BuildSettings.dynamoDbSettings)
   .settings(
     resolvers ++= Seq(
-      "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
+      "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
+      "Maven Twitter" at "https://maven.twttr.com/" // Used for Hadoop LZO
     ),
     libraryDependencies ++= Seq(
       Dependencies.hadoop,
+      Dependencies.hadoopLzo,
       Dependencies.spark,
       Dependencies.sparkSql,
       Dependencies.schemaDdl,
@@ -61,6 +63,7 @@ lazy val commonDependencies = Seq(
   Dependencies.analyticsSdk,
   Dependencies.fs2,
   Dependencies.decline,
+  Dependencies.declineEnumeratum,
   Dependencies.s3,
   Dependencies.dynamodb,
   Dependencies.enumeratum,

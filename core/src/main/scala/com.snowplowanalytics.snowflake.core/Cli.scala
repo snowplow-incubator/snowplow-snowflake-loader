@@ -18,18 +18,18 @@ import java.util.Base64
 import cats.data.{EitherT, ValidatedNel}
 import cats.effect.IO
 import cats.implicits._
-
 import io.circe.Json
 import io.circe.syntax._
 import io.circe.parser.{parse => jsonParse}
-
-import com.monovore.decline.{ Opts, Command, Argument }
-
+import com.monovore.decline.{Argument, Command, Opts}
+import com.monovore.decline.enumeratum._
 import com.snowplowanalytics.iglu.client.Client
 import com.snowplowanalytics.iglu.core.SelfDescribingData
 import com.snowplowanalytics.iglu.core.circe.implicits._
-
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
+import enumeratum._
+
+import scala.collection.immutable
 
 object Cli {
   import Config._
@@ -86,16 +86,28 @@ object Cli {
       def defaultMetavar: String = "base64"
     }
 
+  sealed trait CompressionFormat extends EnumEntry with EnumEntry.Lowercase
+  object CompressionFormat extends Enum[CompressionFormat] {
+    case object Gzip extends CompressionFormat
+    case object LZO extends CompressionFormat
+    case object Snappy extends CompressionFormat
+    case object None extends CompressionFormat
+
+    val values: immutable.IndexedSeq[CompressionFormat] = findValues
+  }
+
   case class Transformer(loaderConfig: Config,
                          igluClient: Client[IO, Json],
                          inbatch: Boolean,
-                         eventsManifestConfig: Option[EventsManifestConfig])
+                         eventsManifestConfig: Option[EventsManifestConfig],
+                         inputCompressionFormat: Option[CompressionFormat])
 
   object Transformer {
     case class Raw(loaderConfig: Base64Encoded,
                    resolver: Base64Encoded,
                    inbatch: Boolean,
-                   eventsManifestConfig: Option[Base64Encoded])
+                   eventsManifestConfig: Option[Base64Encoded],
+                   inputCompressionFormat: Option[CompressionFormat])
 
     def parse(args: Seq[String]): EitherT[IO, String, Transformer] =
       transformer
@@ -113,7 +125,7 @@ object Cli {
           case Some(json) => EventsManifestConfig.parseJson[IO](igluClient, json.json).map(_.some)
           case None => EitherT.rightT[IO, String](none[EventsManifestConfig])
         }
-      } yield Transformer(cfg, igluClient, raw.inbatch, manifest)
+      } yield Transformer(cfg, igluClient, raw.inbatch, manifest, raw.inputCompressionFormat)
 
   }
 
@@ -194,11 +206,15 @@ object Cli {
 
   val inBatchDedupe = Opts.flag("inbatch-deduplication", "Enable in-batch natural deduplication").orFalse
   val evantsManifest = Opts.option[Base64Encoded]("events-manifest", "Snowplow Events Manifest JSON config, to enable cross-batch deduplication, base64-encoded").orNone
+  val inputCompressionFormat = Opts.option[CompressionFormat](
+    "input-compression-format",
+    "The compression used by input files of the Spark job. Supported values: none, gzip, lzo, snappy."
+  ).orNone
 
   val loader = Command("snowplow-snowflake-loader", "Snowplow Database orchestrator")(load.orElse(setup).orElse(migrate))
 
   val transformer = Command("snowplow-snowflake-transformer", "Spark job to transform enriched data to Snowflake-compatible format") {
-    (configEncoded, resolverEncoded, inBatchDedupe, evantsManifest).mapN(Transformer.Raw)
+    (configEncoded, resolverEncoded, inBatchDedupe, evantsManifest, inputCompressionFormat).mapN(Transformer.Raw)
   }
 }
 

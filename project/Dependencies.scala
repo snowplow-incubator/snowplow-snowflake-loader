@@ -17,6 +17,7 @@ object Dependencies {
   object V {
     // Java
     val hadoop           = "2.8.5"
+    val hadoopLzo        = "0.4.20"
     val snowflakeJdbc    = "3.11.0"
     val aws              = "1.11.209"
     // Scala
@@ -37,6 +38,7 @@ object Dependencies {
 
   // Java
   val hadoop           = "org.apache.hadoop"     % "hadoop-aws"                    % V.hadoop         % Provided
+  val hadoopLzo        = "com.hadoop.gplcompression"     % "hadoop-lzo"            % V.hadoopLzo      % Provided
   val snowflakeJdbc    = "net.snowflake"         % "snowflake-jdbc"                % V.snowflakeJdbc
   val s3               = "com.amazonaws"         % "aws-java-sdk-s3"               % V.aws
   val dynamodb         = "com.amazonaws"         % "aws-java-sdk-dynamodb"         % V.aws
@@ -48,6 +50,7 @@ object Dependencies {
   val sparkSql         = "org.apache.spark"      %% "spark-sql"                    % V.spark          % Provided
   val fs2              = "co.fs2"                %% "fs2-core"                     % V.fs2
   val decline          = "com.monovore"          %% "decline"                      % V.decline
+  val declineEnumeratum= "com.monovore"          %% "decline-enumeratum"           % V.decline
   val analyticsSdk     = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
   val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
   val igluClient       = ("com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient)

@@ -27,6 +27,7 @@ import com.snowplowanalytics.iglu.client.resolver.registries.Registry
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
 import com.snowplowanalytics.snowflake.core.Config.SetupSteps
 import com.snowplowanalytics.snowflake.core.Config.S3Folder.{coerce => s3}
+import com.snowplowanalytics.snowflake.core.Cli.CompressionFormat
 
 
 class ConfigSpec extends Specification {
@@ -415,7 +416,9 @@ class ConfigSpec extends Specification {
       "--inbatch-deduplication",
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config),
-      "--events-manifest", encodeToBase64(eventManifestConfig)).toArray
+      "--events-manifest", encodeToBase64(eventManifestConfig),
+      "--input-compression-format", "gzip"
+    ).toArray
 
     val expected = Cli.Transformer(
       Config(
@@ -449,11 +452,12 @@ class ConfigSpec extends Specification {
         ),
         awsRegion = "us-west-1",
         dynamodbTable = "snowplow-integration-test-crossbatch-dedupe"
-      ))
+      )),
+      Some(CompressionFormat.Gzip)
     )
 
     Cli.Transformer.parse(args).value.unsafeRunSync() must beRight.like {
-      case transformer @ Cli.Transformer(_, client, _, _) =>
+      case transformer @ Cli.Transformer(_, client, _, _, _) =>
         val updatedClient: Resolver[IO] = client.resolver.copy(cache = None)
         val updatedConfig = transformer.copy(igluClient = transformer.igluClient.copy(resolver = updatedClient))
         updatedConfig must beEqualTo(expected)
