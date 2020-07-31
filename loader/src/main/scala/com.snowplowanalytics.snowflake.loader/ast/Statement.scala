@@ -56,6 +56,7 @@ object Statement {
   implicit object CreateStageStatement extends Statement[CreateStage] {
     def getStatement(ddl: CreateStage): SqlStatement = {
       val credentials = ddl.credentials match {
+        case Some(c) if c.roleArn.isDefined => s" CREDENTIALS = (AWS_ROLE = '${c.roleArn.get}')"
         case Some(c) if c.sessionToken.isDefined =>
           System.err.println("AWS_TOKEN (temporary credentials) must never be used for stages. Skipping credentials")
           None
@@ -116,11 +117,10 @@ object Statement {
     def getStatement(ast: CopyInto): SqlStatement = {
       val credentials = ast.credentials match {
         case Some(c) =>
-          val token = c.sessionToken match {
-            case None => ""
-            case Some(t) => s" AWS_TOKEN = '$t'"
-          }
-          s" CREDENTIALS = (AWS_KEY_ID = '${c.awsAccessKeyId}' AWS_SECRET_KEY = '${c.awsSecretKey}'$token)"
+          c.roleArn.fold {
+            val token = c.sessionToken.fold("")(st => s" AWS_TOKEN = '$st'")
+            s" CREDENTIALS = (AWS_KEY_ID = '${c.awsAccessKeyId}' AWS_SECRET_KEY = '${c.awsSecretKey}'$token)"
+          }(arn => s" CREDENTIALS = (AWS_ROLE = '$arn')")
         case None => ""  // Expect credentials are available in stage
       }
       val onError = ast.onError match {
