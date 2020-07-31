@@ -13,5 +13,5 @@
 package com.snowplowanalytics.snowflake.loader.ast
 
 object Common {
-  case class AwsCreds(awsAccessKeyId: String, awsSecretKey: String, sessionToken: Option[String])
+  case class AwsCreds(awsAccessKeyId: String, awsSecretKey: String, sessionToken: Option[String], roleArn: Option[String])
 }

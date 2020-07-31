@@ -37,7 +37,7 @@ object PasswordService {
   def getSetupCredentials(authMethod: Config.AuthMethod): Option[Common.AwsCreds] =
     authMethod match {
       case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Some(Common.AwsCreds(accessKeyId, secretAccessKey, None))
+        Some(Common.AwsCreds(accessKeyId, secretAccessKey, None, None))
       case _ => None
     }
 
@@ -45,10 +45,10 @@ object PasswordService {
   def getLoadCredentials(authMethod: Config.AuthMethod): Either[CredentialsStatus, Common.AwsCreds] =
     authMethod match {
       case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Right(Common.AwsCreds(accessKeyId, secretAccessKey, None))
+        Right(Common.AwsCreds(accessKeyId, secretAccessKey, None, None))
       case Config.AuthMethod.RoleAuth(roleArn, sessionDuration) =>
         getCredentialsForRole(roleArn, sessionDuration).map { creds =>
-          Common.AwsCreds(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
+          Common.AwsCreds(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken), Option(roleArn))
         }.leftMap(e => CredentialsFailure(e))
       case Config.AuthMethod.StageAuth => Left(NoCredentials)
     }
