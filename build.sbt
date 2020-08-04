@@ -72,3 +72,4 @@ lazy val commonDependencies = Seq(
   Dependencies.scalacheck
 )
 
+ThisBuild / useCoursier := false
