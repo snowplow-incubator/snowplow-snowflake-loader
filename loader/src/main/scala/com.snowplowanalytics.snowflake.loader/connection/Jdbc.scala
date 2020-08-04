@@ -31,15 +31,16 @@ object Jdbc {
     def getConnection(config: Config): F[Database.Connection] = Sync[F].delay {
       Class.forName("net.snowflake.client.jdbc.SnowflakeDriver")
 
-      // US West is default: https://docs.snowflake.net/manuals/user-guide/jdbc-configure.html#jdbc-driver-connection-string
-      val host = config.jdbcHost match {
-        case Some(overrideHost) => overrideHost
-        case None =>
-          if (config.snowflakeRegion == "us-west-1")
-            s"${config.account}.snowflakecomputing.com"
-          else
-            s"${config.account}.${config.snowflakeRegion}.snowflakecomputing.com"
-      }
+      // US West (Oregon), us-west-2, is default: https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
+      val host = config.jdbcHost.fold {
+        if (config.snowflakeRegion == "us-west-2")
+          s"${config.account}.snowflakecomputing.com"
+        else if (List("us-east-1", "eu-west-1", "eu-central-1", "ap-southeast-1", "ap-southeast-2").contains(config.snowflakeRegion))
+          s"${config.account}.${config.snowflakeRegion}.snowflakecomputing.com"
+        else
+          s"${config.account}.${config.snowflakeRegion}.aws.snowflakecomputing.com"
+      }(_)
+
       // Build connection properties
       val properties = new Properties()
 
