@@ -1,3 +1,11 @@
+Version 0.7.0 (2020-08-06)
+--------------------------
+Add authentication support for storage integration (#106)
+Update default JDBC host (#102)
+Fix sbt-dynamodb usage (#111)
+Bump SBT to 1.2.8 (#110)
+Bump snowflake-jdbc to 3.12.10 (#109)
+
 Version 0.6.0 (2020-01-31)
 --------------------------
 Extend copyright notice to 2020 (#96)
