@@ -11,7 +11,13 @@
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
 lazy val root = project.in(file("."))
-  .settings(BuildSettings.buildSettings)
+  .settings(
+    BuildSettings.buildSettings,
+    // following lines prevent sbt-dynamodb tasks from being executed for each sub-project
+    startDynamoDBLocal / aggregate := false,
+    dynamoDBLocalTestCleanup / aggregate := false,
+    stopDynamoDBLocal / aggregate := false
+  )
   .aggregate(core, loader, transformer)
 
 lazy val core = project
@@ -19,7 +25,6 @@ lazy val core = project
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.scalifySettings)
   .settings(libraryDependencies ++= commonDependencies)
-  .settings(BuildSettings.dynamoDbSettings)
 
 lazy val loader = project
   .settings(moduleName := "snowplow-snowflake-loader")
@@ -40,7 +45,6 @@ lazy val transformer = project
   .settings(BuildSettings.scalifySettings)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.buildSettings)
-  .settings(BuildSettings.dynamoDbSettings)
   .settings(
     resolvers ++= Seq(
       "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
