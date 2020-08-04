@@ -68,7 +68,7 @@ packages:
     build_version : <%= FUNC['sbt_version(.)'] %>
 
     build_commands:
-      - sbt assembly
+      - sbt clean startDynamodbLocal assembly dynamodbLocalTestCleanup stopDynamodbLocal
 
     # Required: Artifact
     artifacts:
