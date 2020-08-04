@@ -5,7 +5,7 @@ scala:
 jdk:
 - oraclejdk8
 script:
-- sbt +test
+- sbt clean startDynamodbLocal +test dynamodbLocalTestCleanup stopDynamodbLocal
 before_deploy:
 - pip install --user release-manager==0.4.1
 deploy:
