@@ -1,3 +1,11 @@
+Version 0.7.0 (2020-08-05)
+--------------------------
+Fix sbt-dynamodb usage (#111)
+Bump SBT to 1.2.8 (#110)
+Update default JDBC host (#102)
+Add support for IAM role based authentication to AWS resources (#106)
+Bump snowflake-jdbc to 3.12.10 (#109)
+
 Version 0.6.0 (2020-01-31)
 --------------------------
 Extend copyright notice to 2020 (#96)
