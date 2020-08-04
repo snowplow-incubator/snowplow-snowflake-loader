@@ -18,7 +18,7 @@ Assuming git and [SBT][sbt] installed:
 ```bash
 $ git clone https://github.com/snowplow-incubator/snowplow-snowflake-loader.git
 $ cd snowplow-snowflake-loader
-$ sbt test
+$ sbt clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
 ```
 
 ## Copyright and License
@@ -40,7 +40,7 @@ limitations under the License.
 [travis]: https://travis-ci.org/snowplow/snowplowsnowflaketransformer
 [travis-image]: https://travis-ci.org/snowplow/snowplowsnowflaketransformer.png?branch=master
 
-[release-image]: http://img.shields.io/badge/release-0.6.0-blue.svg?style=flat
+[release-image]: http://img.shields.io/badge/release-0.7.0-blue.svg?style=flat
 [releases]: https://github.com/snowplow/snowplowsnowflaketransformer/releases
 
 [sbt]: https://www.scala-sbt.org/
