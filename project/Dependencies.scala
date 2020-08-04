@@ -17,7 +17,7 @@ object Dependencies {
   object V {
     // Java
     val hadoop           = "2.8.5"
-    val snowflakeJdbc    = "3.11.0"
+    val snowflakeJdbc    = "3.12.10"
     val aws              = "1.11.209"
     // Scala
     val spark            = "2.2.0"
