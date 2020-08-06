@@ -12,6 +12,27 @@
  */
 package com.snowplowanalytics.snowflake.loader.ast
 
-object Common {
-  case class AwsCreds(awsAccessKeyId: String, awsSecretKey: String, sessionToken: Option[String])
+/**
+ * Represents all authentication options supported by Snowflake
+ */
+sealed trait Auth
+
+object Auth {
+
+  /**
+   * Represents a Storage Integration entity in Snowflake
+   * The recommended way to setup authentication
+   * @param name Name of the storage integration
+   */
+  final case class StorageIntegration(name: String) extends Auth
+
+  /**
+   * Represents a pair of IAM keys with an optional session token
+   */
+  final case class AwsKeys(awsAccessKeyId: String, awsSecretKey: String, sessionToken: Option[String]) extends Auth
+
+  /**
+   * Represents an IAM role
+   */
+  final case class AwsRole(roleArn: String) extends Auth
 }
