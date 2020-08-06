@@ -69,12 +69,14 @@ object Config {
     final case class RoleAuth(roleArn: String, sessionDuration: Int) extends AuthMethod
     final case class CredentialsAuth(accessKeyId: String, secretAccessKey: String) extends AuthMethod
     final case object StageAuth extends AuthMethod
+    final case class StorageIntegration(integrationName: String) extends AuthMethod
 
     implicit val authMethodCirceDecoder: Decoder[AuthMethod] =
       List[Decoder[AuthMethod]](
         deriveDecoder[RoleAuth].widen,
         deriveDecoder[CredentialsAuth].widen,
-        Decoder.const(StageAuth).widen
+        Decoder.const(StageAuth).widen,
+        deriveDecoder[StorageIntegration].widen
       ).reduce(_ or _)
   }
 
