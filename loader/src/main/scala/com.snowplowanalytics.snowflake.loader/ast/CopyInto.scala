@@ -19,7 +19,7 @@ case class CopyInto(
   table: String,
   columns: List[String],
   from: From,
-  credentials: Option[Common.AwsCreds],
+  credentials: Option[Auth],
   fileFormat: FileFormat,
   onError: Option[OnError],
   stripNullValues: Boolean)   // Valid only for JSON

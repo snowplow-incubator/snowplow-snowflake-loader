@@ -14,4 +14,4 @@ package com.snowplowanalytics.snowflake.loader.ast
 
 import com.snowplowanalytics.snowflake.core.Config.S3Folder
 
-case class CreateStage(name: String, url: S3Folder, fileFormat: String, schema: String, credentials: Option[Common.AwsCreds])
+case class CreateStage(name: String, url: S3Folder, fileFormat: String, schema: String, credentials: Option[Auth])
