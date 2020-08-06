@@ -55,6 +55,7 @@ object PasswordService {
           Common.AwsKeys(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
         }.leftMap(e => CredentialsFailure(e))
       case Config.AuthMethod.StorageIntegration(name) =>
+        System.out.println(s"config.auth has storage integration with name: $name")
         Common.StorageIntegration(name).asRight
       case Config.AuthMethod.StageAuth => Left(NoCredentials)
     }

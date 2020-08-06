@@ -117,13 +117,17 @@ object Statement {
   implicit object CopyInto extends Statement[CopyInto] {
     def getStatement(ast: CopyInto): SqlStatement = {
       // COPY INTO TABLE supports IAM keys and storage option for authentication only
+      System.out.println(s"ast.credentials: ${ast.credentials}")
       val auth = ast.credentials.fold(""){
         case Common.AwsKeys(accessKey, secretKey, token) =>
           val preparedToken = token.fold("")(t => s" AWS_TOKEN = '$t'")
           s" CREDENTIALS = ( AWS_KEY_ID = '$accessKey' AWS_SECRET_KEY = '$secretKey'$preparedToken )"
-        case Common.StorageIntegration(name) => s" STORAGE_INTEGRATION = $name"
+        case Common.StorageIntegration(name) =>
+          System.out.println(s"name of the storage integration provided in config: $name")
+          s" STORAGE_INTEGRATION = $name"
         case _ => ""
       }
+      System.out.println(s"auth: $auth")
       val onError = ast.onError match {
         case Some(Continue) => s"CONTINUE"
         case Some(SkipFile) => s"SKIP_FILE"
@@ -133,8 +137,7 @@ object Statement {
         case None => ""
       }
       val copyOptions = if (onError == "") "" else s" ON_ERROR = $onError"
-      val stripNulls = if (ast.stripNullValues) " STRIP_NULL_VALUES = TRUE"
-      else ""
+      val stripNulls = if (ast.stripNullValues) " STRIP_NULL_VALUES = TRUE" else ""
       SqlStatement(s"COPY INTO ${ast.schema}.${ast.table}(${ast.columns.mkString(",")}) FROM @${ast.from.schema}.${ast.from.stageName}/${ast.from.path}$auth$copyOptions FILE_FORMAT = (FORMAT_NAME = '${ast.fileFormat.schema}.${ast.fileFormat.formatName}'$stripNulls)" )
     }
   }
