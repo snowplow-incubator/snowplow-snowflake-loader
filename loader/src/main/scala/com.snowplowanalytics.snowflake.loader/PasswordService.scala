@@ -33,23 +33,29 @@ object PasswordService {
   case object NoCredentials extends CredentialsStatus
   case class CredentialsFailure(message: String) extends CredentialsStatus
 
-  /** Get credentials **only** if they're provided explicitly, use for `setup` */
-  def getSetupCredentials(authMethod: Config.AuthMethod): Option[Common.AwsCreds] =
+  /**
+   * Get credentials for `setup` subcommand
+   * Only IAM keys and storage integration are supported
+   */
+  def getSetupCredentials(authMethod: Config.AuthMethod): Option[Common.Auth] =
     authMethod match {
       case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Some(Common.AwsCreds(accessKeyId, secretAccessKey, None))
+        Some(Common.AwsKeys(accessKeyId, secretAccessKey, None))
+      case Config.AuthMethod.StorageIntegration(name) => Some(Common.StorageIntegration(name))
       case _ => None
     }
 
   /** Get credentials by trying all possible ways: explicit, temporary, provider chain */
-  def getLoadCredentials(authMethod: Config.AuthMethod): Either[CredentialsStatus, Common.AwsCreds] =
+  def getLoadCredentials(authMethod: Config.AuthMethod): Either[CredentialsStatus, Common.Auth] =
     authMethod match {
       case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Right(Common.AwsCreds(accessKeyId, secretAccessKey, None))
+        Common.AwsKeys(accessKeyId, secretAccessKey, None).asRight
       case Config.AuthMethod.RoleAuth(roleArn, sessionDuration) =>
         getCredentialsForRole(roleArn, sessionDuration).map { creds =>
-          Common.AwsCreds(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
+          Common.AwsKeys(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
         }.leftMap(e => CredentialsFailure(e))
+      case Config.AuthMethod.StorageIntegration(name) =>
+        Common.StorageIntegration(name).asRight
       case Config.AuthMethod.StageAuth => Left(NoCredentials)
     }
 

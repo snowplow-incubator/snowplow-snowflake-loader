@@ -55,15 +55,17 @@ object Statement {
 
   implicit object CreateStageStatement extends Statement[CreateStage] {
     def getStatement(ddl: CreateStage): SqlStatement = {
-      val credentials = ddl.credentials match {
-        case Some(c) if c.sessionToken.isDefined =>
-          System.err.println("AWS_TOKEN (temporary credentials) must never be used for stages. Skipping credentials")
-          None
-        case Some(c) => s" CREDENTIALS = (AWS_KEY_ID = '${c.awsAccessKeyId}' AWS_SECRET_KEY = '${c.awsSecretKey}')"
-        case None => ""  // Expect credentials are available in stage
+      val auth = ddl.credentials.fold(""){
+        case Common.AwsKeys(accessKey, secretKey, token) =>
+          if (token.isDefined) {
+            System.err.println("AWS_TOKEN (temporary credentials) must never be used for stages. Skipping credentials")
+            ""
+          } else s" CREDENTIALS = ( AWS_KEY_ID = '$accessKey' AWS_SECRET_KEY = '$secretKey' )"
+        case Common.AwsRole(arn) => s" CREDENTIALS = ( AWS_ROLE = '$arn' )"
+        case Common.StorageIntegration(name) => s" STORAGE_INTEGRATION = $name"
       }
       SqlStatement(
-        s"CREATE STAGE IF NOT EXISTS ${ddl.schema}.${ddl.name} URL = '${ddl.url}' FILE_FORMAT = ${ddl.fileFormat}$credentials"
+        s"CREATE STAGE IF NOT EXISTS ${ddl.schema}.${ddl.name} URL = '${ddl.url}' FILE_FORMAT = ${ddl.fileFormat}$auth"
       )
     }
   }
@@ -114,14 +116,13 @@ object Statement {
 
   implicit object CopyInto extends Statement[CopyInto] {
     def getStatement(ast: CopyInto): SqlStatement = {
-      val credentials = ast.credentials match {
-        case Some(c) =>
-          val token = c.sessionToken match {
-            case None => ""
-            case Some(t) => s" AWS_TOKEN = '$t'"
-          }
-          s" CREDENTIALS = (AWS_KEY_ID = '${c.awsAccessKeyId}' AWS_SECRET_KEY = '${c.awsSecretKey}'$token)"
-        case None => ""  // Expect credentials are available in stage
+      // COPY INTO TABLE supports IAM keys and storage option for authentication only
+      val auth = ast.credentials.fold(""){
+        case Common.AwsKeys(accessKey, secretKey, token) =>
+          val preparedToken = token.fold("")(t => s" AWS_TOKEN = '$t'")
+          s" CREDENTIALS = ( AWS_KEY_ID = '$accessKey' AWS_SECRET_KEY = '$secretKey'$preparedToken )"
+        case Common.StorageIntegration(name) => s" STORAGE_INTEGRATION = $name"
+        case _ => ""
       }
       val onError = ast.onError match {
         case Some(Continue) => s"CONTINUE"
@@ -132,10 +133,8 @@ object Statement {
         case None => ""
       }
       val copyOptions = if (onError == "") "" else s" ON_ERROR = $onError"
-      val stripNulls = if (ast.stripNullValues) " STRIP_NULL_VALUES = TRUE"
-      else ""
-      SqlStatement(s"COPY INTO ${ast.schema}.${ast.table}(${ast.columns.mkString(",")}) FROM @${ast.from.schema}.${ast.from.stageName}/${ast.from.path}$credentials$copyOptions FILE_FORMAT = (FORMAT_NAME = '${ast.fileFormat.schema}.${ast.fileFormat.formatName}'$stripNulls)" )
-
+      val stripNulls = if (ast.stripNullValues) " STRIP_NULL_VALUES = TRUE" else ""
+      SqlStatement(s"COPY INTO ${ast.schema}.${ast.table}(${ast.columns.mkString(",")}) FROM @${ast.from.schema}.${ast.from.stageName}/${ast.from.path}$auth$copyOptions FILE_FORMAT = (FORMAT_NAME = '${ast.fileFormat.schema}.${ast.fileFormat.formatName}'$stripNulls)" )
     }
   }
 

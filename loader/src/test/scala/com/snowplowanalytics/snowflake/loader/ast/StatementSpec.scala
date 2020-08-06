@@ -21,13 +21,17 @@ class StatementSpec extends Specification {
 
   "getStatement" should {
     "Transform CREATE TABLE AST into String" in e1
-    "Transform COPY INTO AST into String" in e2
+    "Transform COPY INTO TABLE AST (with IAM keys) into String" in e2
     "Transform INSERT INTO AST into String" in e3
     "Transform SHOW into String" in e4
-    "Transform COPY INTO AST (without credentials) into String" in e5
+    "Transform COPY INTO TABLE AST (without credentials) into String" in e5
     "Transform CREATE STAGE AST into String"  in e6
-    "Transform COPY INTO AST (with stripping nulls) into String" in e7
+    "Transform COPY INTO TABLE AST (with stripping nulls) into String" in e7
     "Transform CREATE WAREHOUSE AST into String" in e8
+    "Transform COPY INTO TABLE AST (with IAM role) into String" in e9
+    "Transform CREATE STAGE AST (with IAM role) into String" in e10
+    "Transform CREATE STAGE AST (with IAM keys) into String" in e11
+    "Transform COPY INTO TABLE AST (with storage integration) into String" in e12
   }
 
   def e1 = {
@@ -52,7 +56,7 @@ class StatementSpec extends Specification {
       "some_table",
       columns,
       CopyInto.From("other_schema", "stage_name", "path/to/dir"),
-      Some(Common.AwsCreds("AAA", "xyz", None)),
+      Some(Common.AwsKeys("AAA", "xyz", None)),
       CopyInto.FileFormat("third_schema", "format_name"),
       None,
       false)
@@ -60,7 +64,7 @@ class StatementSpec extends Specification {
     val result = input.getStatement.value
     val expected = "COPY INTO some_schema.some_table(id,foo,fp_id,json) " +
       "FROM @other_schema.stage_name/path/to/dir " +
-      "CREDENTIALS = (AWS_KEY_ID = 'AAA' AWS_SECRET_KEY = 'xyz') " +
+      "CREDENTIALS = ( AWS_KEY_ID = 'AAA' AWS_SECRET_KEY = 'xyz' ) " +
       "FILE_FORMAT = (FORMAT_NAME = 'third_schema.format_name')"
 
     result must beEqualTo(expected)
@@ -111,10 +115,10 @@ class StatementSpec extends Specification {
   }
 
   def e6 = {
-    val statement = CreateStage("snowplow_stage", Config.S3Folder.coerce("s3://cross-batch"), "JSON", "atomic", Some(Common.AwsCreds("ACCESS", "secret", None)))
+    val statement = CreateStage("snowplow_stage", Config.S3Folder.coerce("s3://cross-batch"), "JSON", "atomic", Some(Common.AwsKeys("ACCESS", "secret", None)))
 
     val result = statement.getStatement.value
-    val expected = "CREATE STAGE IF NOT EXISTS atomic.snowplow_stage URL = 's3://cross-batch/' FILE_FORMAT = JSON CREDENTIALS = (AWS_KEY_ID = 'ACCESS' AWS_SECRET_KEY = 'secret')"
+    val expected = "CREATE STAGE IF NOT EXISTS atomic.snowplow_stage URL = 's3://cross-batch/' FILE_FORMAT = JSON CREDENTIALS = ( AWS_KEY_ID = 'ACCESS' AWS_SECRET_KEY = 'secret' )"
 
     result must beEqualTo(expected)
   }
@@ -153,6 +157,72 @@ class StatementSpec extends Specification {
       "WAREHOUSE_SIZE = SMALL " +
       "AUTO_SUSPEND = 500 " +
       "AUTO_RESUME = FALSE"
+
+    result must beEqualTo(expected)
+  }
+
+  def e9 = {
+    val columns = List("id", "foo", "fp_id", "json")
+    val input = CopyInto(
+      "some_schema",
+      "some_table",
+      columns,
+      CopyInto.From("other_schema", "stage_name", "path/to/dir"),
+      Some(Common.AwsKeys("AAA", "xyz", None)),
+      CopyInto.FileFormat("third_schema", "format_name"),
+      None,
+      stripNullValues = false)
+
+    val result = input.getStatement.value
+    val expected = "COPY INTO some_schema.some_table(id,foo,fp_id,json) " +
+      "FROM @other_schema.stage_name/path/to/dir " +
+      "CREDENTIALS = ( AWS_KEY_ID = 'AAA' AWS_SECRET_KEY = 'xyz' ) " +
+      "FILE_FORMAT = (FORMAT_NAME = 'third_schema.format_name')"
+
+    result must beEqualTo(expected)
+  }
+
+  def e10 = {
+    val input = CreateStage(
+      "sp_stage", Config.S3Folder("s3path"), "format", "schema", Some(Common.AwsRole("sp_role"))
+    )
+
+    val result = input.getStatement.value
+    val expected = "CREATE STAGE IF NOT EXISTS schema.sp_stage URL = 's3path' FILE_FORMAT = format " +
+      "CREDENTIALS = ( AWS_ROLE = 'sp_role' )"
+
+    result must beEqualTo(expected)
+  }
+
+  def e11 = {
+    val input = CreateStage(
+      "sp_stage", Config.S3Folder("s3path"), "format", "schema", Some(Common.AwsKeys("aki", "ask", None))
+    )
+
+    val result = input.getStatement.value
+    val expected = "CREATE STAGE IF NOT EXISTS schema.sp_stage URL = 's3path' FILE_FORMAT = format " +
+      "CREDENTIALS = ( AWS_KEY_ID = 'aki' AWS_SECRET_KEY = 'ask' )"
+
+    result must beEqualTo(expected)
+  }
+
+  def e12 = {
+    val columns = List("id", "foo", "fp_id", "json")
+    val input = CopyInto(
+      "some_schema",
+      "some_table",
+      columns,
+      CopyInto.From("other_schema", "stage_name", "path/to/dir"),
+      Some(Common.StorageIntegration("s3_int")),
+      CopyInto.FileFormat("third_schema", "format_name"),
+      None,
+      stripNullValues = false)
+
+    val result = input.getStatement.value
+    val expected = "COPY INTO some_schema.some_table(id,foo,fp_id,json) " +
+      "FROM @other_schema.stage_name/path/to/dir " +
+      "STORAGE_INTEGRATION = s3_int " +
+      "FILE_FORMAT = (FORMAT_NAME = 'third_schema.format_name')"
 
     result must beEqualTo(expected)
   }
