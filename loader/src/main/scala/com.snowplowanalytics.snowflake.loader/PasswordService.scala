@@ -21,9 +21,9 @@ import com.amazonaws.services.securitytoken.model.{AssumeRoleRequest, Credential
 import com.amazonaws.services.simplesystemsmanagement.AWSSimpleSystemsManagementClientBuilder
 import com.amazonaws.services.simplesystemsmanagement.model.GetParameterRequest
 
-import com.snowplowanalytics.snowflake.core.Config
+import com.snowplowanalytics.snowflake.core.Config.AuthMethod
 
-import ast.Common
+import ast.Auth
 
 
 /** Security/auth-related functions */
@@ -33,24 +33,31 @@ object PasswordService {
   case object NoCredentials extends CredentialsStatus
   case class CredentialsFailure(message: String) extends CredentialsStatus
 
-  /** Get credentials **only** if they're provided explicitly, use for `setup` */
-  def getSetupCredentials(authMethod: Config.AuthMethod): Option[Common.AwsCreds] =
+  /**
+   * Get credentials for `setup` subcommand
+   * Only IAM keys and storage integration are supported
+   */
+  def getSetupCredentials(authMethod: AuthMethod): Option[Auth] =
     authMethod match {
-      case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Some(Common.AwsCreds(accessKeyId, secretAccessKey, None))
-      case _ => None
+      case AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
+        Some(Auth.AwsKeys(accessKeyId, secretAccessKey, None))
+      case AuthMethod.StorageIntegration(name) => Some(Auth.StorageIntegration(name))
+      case AuthMethod.StageAuth => None
+      case AuthMethod.RoleAuth(_, _) => None
     }
 
   /** Get credentials by trying all possible ways: explicit, temporary, provider chain */
-  def getLoadCredentials(authMethod: Config.AuthMethod): Either[CredentialsStatus, Common.AwsCreds] =
+  def getLoadCredentials(authMethod: AuthMethod): Either[CredentialsStatus, Auth] =
     authMethod match {
-      case Config.AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
-        Right(Common.AwsCreds(accessKeyId, secretAccessKey, None))
-      case Config.AuthMethod.RoleAuth(roleArn, sessionDuration) =>
+      case AuthMethod.CredentialsAuth(accessKeyId, secretAccessKey) =>
+        Auth.AwsKeys(accessKeyId, secretAccessKey, None).asRight
+      case AuthMethod.RoleAuth(roleArn, sessionDuration) =>
         getCredentialsForRole(roleArn, sessionDuration).map { creds =>
-          Common.AwsCreds(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
+          Auth.AwsKeys(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
         }.leftMap(e => CredentialsFailure(e))
-      case Config.AuthMethod.StageAuth => Left(NoCredentials)
+      case AuthMethod.StorageIntegration(name) =>
+        Auth.StorageIntegration(name).asRight
+      case AuthMethod.StageAuth => Left(NoCredentials)
     }
 
   /**
