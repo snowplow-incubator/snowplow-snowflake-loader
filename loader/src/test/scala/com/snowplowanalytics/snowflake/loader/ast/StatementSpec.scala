@@ -221,7 +221,6 @@ class StatementSpec extends Specification {
     val result = input.getStatement.value
     val expected = "COPY INTO some_schema.some_table(id,foo,fp_id,json) " +
       "FROM @other_schema.stage_name/path/to/dir " +
-      "STORAGE_INTEGRATION = s3_int " +
       "FILE_FORMAT = (FORMAT_NAME = 'third_schema.format_name')"
 
     result must beEqualTo(expected)

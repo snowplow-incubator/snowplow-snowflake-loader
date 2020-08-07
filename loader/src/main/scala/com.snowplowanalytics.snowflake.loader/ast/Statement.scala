@@ -62,7 +62,7 @@ object Statement {
             ""
           } else s" CREDENTIALS = ( AWS_KEY_ID = '$accessKey' AWS_SECRET_KEY = '$secretKey' )"
         case Common.AwsRole(arn) => s" CREDENTIALS = ( AWS_ROLE = '$arn' )"
-        case Common.StorageIntegration(name) => s" STORAGE_INTEGRATION = $name"
+        case Common.StorageIntegration(_) => s"" // external stage is to provide authentication
       }
       SqlStatement(
         s"CREATE STAGE IF NOT EXISTS ${ddl.schema}.${ddl.name} URL = '${ddl.url}' FILE_FORMAT = ${ddl.fileFormat}$auth"
@@ -121,8 +121,7 @@ object Statement {
         case Common.AwsKeys(accessKey, secretKey, token) =>
           val preparedToken = token.fold("")(t => s" AWS_TOKEN = '$t'")
           s" CREDENTIALS = ( AWS_KEY_ID = '$accessKey' AWS_SECRET_KEY = '$secretKey'$preparedToken )"
-        case Common.StorageIntegration(name) => s" STORAGE_INTEGRATION = $name"
-        case _ => ""
+        case _ => "" // stage will provide authentication, also applicable for storage integration case
       }
       val onError = ast.onError match {
         case Some(Continue) => s"CONTINUE"
