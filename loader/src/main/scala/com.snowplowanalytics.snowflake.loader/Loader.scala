@@ -13,13 +13,13 @@
 package com.snowplowanalytics.snowflake
 package loader
 
-import cats.{ Apply, ApplicativeError, MonadError, Functor, Applicative, Show }
-import cats.data.{ NonEmptyList, ValidatedNel, EitherT, Validated }
+import cats.{Applicative, ApplicativeError, Apply, Functor, MonadError, Show}
+import cats.data.{EitherT, NonEmptyList, Validated, ValidatedNel}
 import cats.implicits._
-import cats.effect.{ Sync, ExitCode }
-
-import ast.{ Show => StatementShow, _ }
-import core.{ Config, RunId, ProcessManifest }
+import cats.effect.{ExitCode, Sync}
+import ast.{Show => StatementShow, _}
+import com.snowplowanalytics.snowflake.core.Config.AuthMethod
+import core.{Config, ProcessManifest, RunId}
 import loader.connection.Database
 
 object Loader {
@@ -77,7 +77,7 @@ object Loader {
       }
 
     val action: Action[F, Unit] = for {
-      _ <- preliminaryChecks(connection, config.schema, config.stage, config.stageUrl.toString, config.warehouse)
+      _ <- preliminaryChecks(connection, config)
       state <- ProcessManifest[F].scan(config.manifest).toAction.map(SnowflakeState.getState)
       _ <- EitherT.fromEither[F](checkFoldersStage(state.foldersToLoad, config.stageUrl))
       _ <- initWarehouse.toAction
@@ -127,11 +127,7 @@ object Loader {
   }
 
   /** Check that necessary Snowflake entities are available */
-  def preliminaryChecks[F[_]: Database: ThrowingM](connection: Database.Connection,
-                                                  schemaName: String,
-                                                  stageName: String,
-                                                  stageUrl: String,
-                                                  warehouseName: String): Action[F, Unit] = {
+  def preliminaryChecks[F[_]: Database: ThrowingM](connection: Database.Connection, conf: Config): Action[F, Unit] = {
     def exists[S: Statement](statement: S, error: String): F[ValidatedNel[String, Unit]] =
       Database[F].executeAndCountRows(connection, statement).map(_ < 1)
         .ifA(Applicative[F].pure(error.invalidNel[Unit]), Applicative[F].pure(().validNel[String])).attempt.map {
@@ -139,20 +135,35 @@ object Loader {
         case Right(original) => original
       }
 
-    val schema = exists(StatementShow.ShowSchemas(Some(schemaName)), s"Schema $schemaName does not exist")
-    val stage = exists(StatementShow.ShowStages(Some(stageName), Some(schemaName)), s"Stage $stageName does not exist")
-    val table = exists(StatementShow.ShowTables(Some(Defaults.Table), Some(schemaName)), s"Table ${Defaults.Table} does not exist")
-    val fileFormat = exists(StatementShow.ShowFileFormats(Some(Defaults.FileFormat), Some(schemaName)), s"File format ${Defaults.FileFormat} does not exist")
-    val warehouse = exists(StatementShow.ShowWarehouses(Some(warehouseName)), s"Warehouse $warehouseName does not exist")
+    val stageUrlCheck: Map[String, Object] => ValidatedNel[String, Unit] = stage =>
+      stage.get("url").fold(s"No url info is available for stage [${conf.stage}]".invalidNel[Unit]){ sfStageUrl =>
+        if (sfStageUrl == conf.stageUrl.toString) ().validNel[String]
+        else (s"Stage [${conf.stage}] is configured to use url [$sfStageUrl] which does not match " +
+          s"stageUrl [${conf.stageUrl}] provided in loader configuration").invalidNel[Unit]
+      }
+
+    val storageIntegrationCheck: (Map[String, Object], AuthMethod) => ValidatedNel[String, Unit] = (stage, auth) =>
+      auth match {
+        case AuthMethod.StorageIntegration(intName) =>
+          stage.get("storage_integration").fold(s"No storage integration is found for stage [${conf.stage}]".invalidNel[Unit]){ sfIntName =>
+            if (sfIntName == intName.toUpperCase) ().validNel[String]
+            else (s"Stage [${conf.stage}] is configured to use integration [$sfIntName] which does not match " +
+              s"integrationName [$intName] provided in loader configuration").invalidNel[Unit]
+          }
+        case _ => ().validNel[String]
+      }
+
+    val schema = exists(StatementShow.ShowSchemas(Some(conf.schema)), s"Schema ${conf.schema} does not exist")
+    val stage = exists(StatementShow.ShowStages(Some(conf.stage), Some(conf.schema)), s"Stage ${conf.stage} does not exist")
+    val table = exists(StatementShow.ShowTables(Some(Defaults.Table), Some(conf.schema)), s"Table ${Defaults.Table} does not exist")
+    val fileFormat = exists(StatementShow.ShowFileFormats(Some(Defaults.FileFormat), Some(conf.schema)), s"File format ${Defaults.FileFormat} does not exist")
+    val warehouse = exists(StatementShow.ShowWarehouses(Some(conf.warehouse)), s"Warehouse ${conf.warehouse} does not exist")
     val stageMatch = Database[F]
-      .executeAndReturnResult(connection, StatementShow.ShowStages(Some(stageName), Some(schemaName)))
-      .flatMap { stages =>
-        val url = stages.headOption.flatMap(_.get("url")).getOrElse("nothing").toString
-        stages match {
-          case Nil => Applicative[F].pure(s"No stages found in DB".invalidNel[Unit])
-          case _ if url == stageUrl => Applicative[F].pure(().validNel[String])
-          case _ => Applicative[F].pure(s"Folder $url does not belong to specified in config stage ($stageUrl)".invalidNel[Unit])
-        }
+      .executeAndReturnResult(connection, StatementShow.ShowStages(Some(conf.stage), Some(conf.schema)))
+      .flatMap {
+        case Nil => Applicative[F].pure(s"No stages like [${conf.stage}] found in schema [${conf.schema}]".invalidNel[Unit])
+        case stage :: Nil => Applicative[F].pure(stageUrlCheck(stage) |+| storageIntegrationCheck(stage, conf.auth))
+        case _ => Applicative[F].pure(s"Multiple stages like [${conf.stage}] found in schema [${conf.schema}]".invalidNel[Unit])
       }
 
     val result = (schema, stage, table, fileFormat, warehouse, stageMatch).tupled.map {
