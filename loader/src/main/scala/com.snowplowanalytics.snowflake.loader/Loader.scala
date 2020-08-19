@@ -137,6 +137,7 @@ object Loader {
 
     val stageUrlCheck: Map[String, Object] => ValidatedNel[String, Unit] = stage =>
       stage.get("url").fold(s"No url info is available for stage [${conf.stage}]".invalidNel[Unit]){ sfStageUrl =>
+        println(s"sfStageUrl: $sfStageUrl")
         if (sfStageUrl == conf.stageUrl.toString) ().validNel[String]
         else (s"Stage [${conf.stage}] is configured to use url [$sfStageUrl] which does not match " +
           s"stageUrl [${conf.stageUrl}] provided in loader configuration").invalidNel[Unit]
@@ -146,6 +147,7 @@ object Loader {
       auth match {
         case AuthMethod.StorageIntegration(intName) =>
           stage.get("storage_integration").fold(s"No storage integration is found for stage [${conf.stage}]".invalidNel[Unit]){ sfIntName =>
+            println(s"sfIntName: $sfIntName")
             if (intName == sfIntName) ().validNel[String]
             else (s"Stage [${conf.stage}] is configured to use integration [$sfIntName] which does not match " +
               s"integrationName [$intName] provided in loader configuration").invalidNel[Unit]
