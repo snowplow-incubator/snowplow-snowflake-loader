@@ -4,6 +4,10 @@ scala:
 - 2.11.11
 jdk:
 - oraclejdk8
+before_script:
+- npm install -g snyk@1.360.0
+- snyk -v
+- snyk auth $SNYK_TOKEN
 script:
 - sbt clean startDynamodbLocal +test dynamodbLocalTestCleanup stopDynamodbLocal
 before_deploy:
@@ -14,6 +18,8 @@ deploy:
   script: "./.travis/deploy.sh $TRAVIS_TAG"
   on:
     tags: true
+after_deploy:
+- snyk monitor --project-name=snowplow-snowflake-loader
 env:
   global:
   - secure: Xkj+6nQQm43Y3G5D2p9QilPQmYy8V25KqqYIMjXxH16l5UEvHz4SMl8+mNJ2pSsfgxwGKOPE0uZf34H9m343CCmJX0npzH4o5SudOuu+HJAYQRd8DDjkd85V2wRgElSXx5bo3741T2PxYy3oIIpSECEg3IaWeMYXho8H2hgWFj9U7L8rZegrIXyqodjjzwrg8Eusw2LjAK4C5BvAnc7e4ENPpbAP/61f0xBupceu0Y39CSb/CEtnDUKIotyZ0p0T8+XjYW09s35/qgjVFEJ1/wDkMDgIqo+DQ4hKh0v/yIqg5lEmJjLxEvokwOAgVu3o9NB5g3v60ajUdwA10XeFU8uc5BvIEDXEjEhwaqQK0iNuL5CoQkcVsszAmVLd8G9NRFnI1Vs825nFf6j3Uw3S6EDkwdVfkCtJEOznID+Bq3cTx4iLrGeTj9gaChNHwa8UynQlCs2OzY6eZw8DQf1wP2d4R1CUS9Uexsn52qnfr9rsmolvOkTeu6wSzomV7whjSxvFnxEVlsEkwj0x94JjoSMwo9eN9AXJYPKBlgvuJUWzCIAGabriGbAANGdrK8d9fWqNIr4LyIL5UavtFeyYuDhPjLxeMHGZ3Bhv4reQb0YFgFbd4NIzSL6p7ZwhQwBZdjkDsZfnKv2heHkw6j0X7w6REss3doWwmXrS7a1CEMk=
