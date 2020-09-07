@@ -12,60 +12,53 @@
  */
 package com.snowplowanalytics.snowflake.loader
 
-import com.snowplowanalytics.snowflake.core.RunId
-import com.snowplowanalytics.snowflake.core.RunId._
-import com.snowplowanalytics.snowflake.loader.SnowflakeState._
+import cats.syntax.all._
+import cats.effect.Sync
+
+import fs2.Stream
 
 import org.joda.time.DateTime
 
-/**
-  * Class representing current consistent state snapshot of Snowplow Snowflake Data.
-  * Folders (run ids) refer to original archived folders in `enriched.archive`,
-  * not folders produced by transformer
-  * @param processed ordered list of processed folders
-  * @param loaded ordered list of successfully loaded folders
-  */
-case class SnowflakeState(processed: List[ProcessedRunId], loaded: List[LoadedRunId]) {
+import com.snowplowanalytics.snowflake.core.RunId
+import com.snowplowanalytics.snowflake.loader.SnowflakeState._
 
-  /** Columns that were already added by the time of state snapshot */
-  val existingColumns = loaded.flatMap(_.shredTypes).toSet
-
-  private val empty: (List[FolderToLoad], Set[String]) =
-    (List.empty, existingColumns)
-
-  /**
-    * Calculate list of folders that have to be loaded in particular order,
-    * with each having set of columns that appeared **first** in this folder
-    */
-  def foldersToLoad: List[FolderToLoad] = {
-    val (toLoad, _) = processed.foldLeft(empty) { case ((loadStates, shredTypes), cur) =>
-      val newColumns = cur.shredTypes.toSet -- shredTypes
-      val loadState = FolderToLoad(cur, newColumns)
-      (loadState :: loadStates, newColumns ++ shredTypes)
-    }
-    toLoad.reverse
-  }
-}
+case class SnowflakeState(foldersToLoad: List[FolderToLoad]) extends AnyVal
 
 object SnowflakeState {
 
-  /**
-    * Folder that was processed by Transformer and ready to be loaded into Snowflake,
-    * and containing set of columns that first appeared in this folder (according to
-    * manifest state)
-    * @param folderToLoad reference to folder processed by Transformer
-    * @param newColumns set of columns this processed folder brings
-    */
-  case class FolderToLoad(folderToLoad: ProcessedRunId, newColumns: Set[String])
+  private val init: (List[RunId.ProcessedRunId], Set[String]) = (List.empty, Set.empty)
+
+  def getState[F[_]: Sync](runIds: Stream[F, RunId]): F[SnowflakeState] = {
+    val foldersAndTypes = runIds.compile.fold(init) { case ((folders, loadedTypes), id) =>
+      if (id.toSkip) (folders, loadedTypes)
+      else id match {
+        case loaded: RunId.LoadedRunId => (folders, loaded.shredTypes.toSet ++ loadedTypes)
+        case processed: RunId.ProcessedRunId => (processed :: folders, loadedTypes)
+        case _ => (folders, loadedTypes)
+      }
+    }
+
+    foldersAndTypes.map(foldState.tupled)
+  }
+
+  val foldState: (List[RunId.ProcessedRunId], Set[String]) => SnowflakeState = (folders, existingTypes) => {
+    val init = List.empty[FolderToLoad]
+    val foldersToLoad = folders.sortBy(_.addedAt).foldLeft(init) { case (folders, folder) =>
+      val folderTypes = folder.shredTypes.toSet -- (folders.flatMap(_.folderToLoad.shredTypes).toSet ++ existingTypes)
+      FolderToLoad(folder, folderTypes) :: folders
+    }
+    SnowflakeState(foldersToLoad.reverse)
+  }
+
+/**
+  * Folder that was processed by Transformer and ready to be loaded into Snowflake,
+  * and containing set of columns that first appeared in this folder (according to
+  * manifest state)
+  * @param folderToLoad reference to folder processed by Transformer
+  * @param newColumns set of columns this processed folder brings
+  */
+  case class FolderToLoad(folderToLoad: RunId.ProcessedRunId, newColumns: Set[String])
 
   implicit def dateTimeOrdering: Ordering[DateTime] =
     Ordering.fromLessThan(_ isBefore _)
-
-  /** Extract state from full Snowflake manifest state */
-  def getState(runIds: List[RunId]): SnowflakeState = {
-    val sortedRunIds = runIds.sortBy(_.addedAt).filterNot(_.toSkip)       // TODO: DynamoDB query
-    val processed = sortedRunIds.collect { case x: ProcessedRunId => x }  // next
-    val loaded = sortedRunIds.collect { case x: LoadedRunId => x }        // done
-    SnowflakeState(processed, loaded)
-  }
 }

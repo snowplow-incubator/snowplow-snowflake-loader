@@ -46,7 +46,7 @@ object Main extends IOApp {
           manifest = ProcessManifest.awsSyncProcessManifest[IO](state)
 
           // Get run folders that are not in RunManifest in any form
-          runFolders <- manifest.getUnprocessed(appConfig.manifest, appConfig.input)
+          runFolders <- manifest.getUnprocessed(appConfig.manifest, appConfig.input).attempt
           atomic <- EitherT(igluClient.resolver.lookupSchema(AtomicSchema))
             .leftMap(_.value.asJson.noSpaces)
             .flatMap(json => Schema.parse(json).toRight("Atomic event schema was invalid").toEitherT)

@@ -53,13 +53,11 @@ class ProcessManifestSpec extends Specification {
         runIds <- IO(itemsGen.sample.getOrElse(throw new RuntimeException("Couldn't generate run ids")))
         amount <- runIds.traverse(ProcessManifestSpec.addRunId[IO](manifest)).map(_.length)
         _ <- IO(println(s"$amount of run ids inserted into a table"))
-        scanned <- manifest.scan(ProcessManifestSpec.LocalTable)
+        scanned <- manifest.scan(ProcessManifestSpec.LocalTable).compile.toList
 
-        cleanedUpScanned = scanned.map(_.map(ProcessManifestSpec.hideDates))
+        cleanedUpScanned = scanned.map(ProcessManifestSpec.hideDates)
         cleanedUpGenerated = runIds.map(ProcessManifestSpec.hideDates)
-      } yield cleanedUpScanned must beRight.like {
-        case scannedRunIds => scannedRunIds must containTheSameElementsAs(cleanedUpGenerated)
-      }
+      } yield cleanedUpScanned must containTheSameElementsAs(cleanedUpGenerated)
 
       test.unsafeRunSync()
     }

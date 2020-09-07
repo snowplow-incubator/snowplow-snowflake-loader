@@ -78,7 +78,8 @@ object Loader {
 
     val action: Action[F, Unit] = for {
       _ <- preliminaryChecks(connection, config)
-      state <- ProcessManifest[F].scan(config.manifest).toAction.map(SnowflakeState.getState)
+      runIds = ProcessManifest[F].scan(config.manifest)
+      state <- SnowflakeState.getState[F](runIds).toAction
       _ <- EitherT.fromEither[F](checkFoldersStage(state.foldersToLoad, config.stageUrl))
       _ <- initWarehouse.toAction
       _ <- state.foldersToLoad.traverse_(loadFolder[F](connection, config))
@@ -313,10 +314,5 @@ object Loader {
   private implicit class FOps[F[_]: Throwing, A](value: F[A]) {
     def toAction: Action[F, A] =
       value.attemptT.leftMap(e => Error.Runtime(e): Error)
-  }
-
-  private implicit class FEitherOps[F[_]: Functor, A](value: F[Either[String, A]]) {
-    def toAction: Action[F, A] =
-      EitherT(value.map(e => e.leftMap(s => Error.Runtime(new RuntimeException(s)): Error)))
   }
 }
