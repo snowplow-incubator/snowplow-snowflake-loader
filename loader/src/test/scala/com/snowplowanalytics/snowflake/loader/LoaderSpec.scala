@@ -21,6 +21,8 @@ import org.joda.time.DateTime
 import cats.effect.{Clock, ExitCode, IO, Sync}
 import cats.effect.concurrent.Ref
 
+import fs2.Stream
+
 import com.snowplowanalytics.snowflake.core.{Config, ProcessManifest, RunId}
 import com.snowplowanalytics.snowflake.core.Config.S3Folder.{coerce => s3}
 import com.snowplowanalytics.snowflake.loader.ast._
@@ -214,18 +216,17 @@ object LoaderSpec {
     def markLoaded(tableName: String, runid: String): IO[Unit] =
       state.update(s => s.copy(loaded = runid :: s.loaded))
 
-    def scan(tableName: String): IO[Either[String, List[RunId]]] =
-      IO(Right(
-        List(
-          RunId.ProcessedRunId(
-            "enriched/good/run=2017-12-10-14-30-35",
-            DateTime.parse("2017-12-10T01:20+02:00"),
-            DateTime.parse("2017-12-10T01:20+02:00"),
-            List("contexts_com_acme_something_1"),
-            Config.S3Folder.coerce("s3://archive/run=2017-12-10-14-30-35/"), "0.2.0", false))
-      ))
+    def scan(tableName: String): Stream[IO, RunId] =
+      Stream.emit(
+        RunId.ProcessedRunId(
+          "enriched/good/run=2017-12-10-14-30-35",
+          DateTime.parse("2017-12-10T01:20+02:00"),
+          DateTime.parse("2017-12-10T01:20+02:00"),
+          List("contexts_com_acme_something_1"),
+          Config.S3Folder.coerce("s3://archive/run=2017-12-10-14-30-35/"), "0.2.0", false)
+      ).covary[IO]
 
-    def getUnprocessed(manifestTable: String, enrichedInput: Config.S3Folder): IO[Either[String, List[String]]] = ???
+    def getUnprocessed(manifestTable: String, enrichedInput: Config.S3Folder): IO[List[String]] = ???
     def add(tableName: String, runId: String): IO[Unit] = ???
     def markProcessed(tableName: String, runId: String, shredTypes: List[String], outputPath: String): IO[Unit] = ???
   }

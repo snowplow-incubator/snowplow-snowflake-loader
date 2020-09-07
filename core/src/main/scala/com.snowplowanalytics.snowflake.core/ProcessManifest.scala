@@ -41,12 +41,12 @@ import com.snowplowanalytics.snowflake.generated.ProjectMetadata
 trait ProcessManifest[F[_]] {
   // Loader-specific functions
   def markLoaded(tableName: String, runId: String): F[Unit]
-  def scan(tableName: String): F[Either[String, List[RunId]]]
+  def scan(tableName: String): Stream[F, RunId]
 
   // Transformer-specific functions
   def add(tableName: String, runId: String): F[Unit]
   def markProcessed(tableName: String, runId: String, shredTypes: List[String], outputPath: String): F[Unit]
-  def getUnprocessed(manifestTable: String, enrichedInput: S3Folder): F[Either[String, List[String]]]
+  def getUnprocessed(manifestTable: String, enrichedInput: S3Folder): F[List[String]]
 }
 
 /**
@@ -133,10 +133,6 @@ object ProcessManifest {
         Sync[F].raiseError(new IllegalStateException(s"Calling destructive add method in DryRun (table $tableName, runId: $runId)"))
     }
 
-  /** Check if set of run ids contains particular folder */
-  def contains(state: List[RunId], folder: String): Boolean =
-    state.map(folder => folder.runId).contains(folder)
-
   /** Common implementation */
   private class AwsManifest[F[_]: Sync: Clock](state: AppState[F]) extends ProcessManifest[F] {
     def markLoaded(tableName: String, runId: String): F[Unit] =
@@ -153,7 +149,7 @@ object ProcessManifest {
         _ <- runDynamoDbQuery[F, Unit](state, query)
       } yield ()
 
-    def scan(tableName: String): F[Either[String, List[RunId]]] = {
+    def scan(tableName: String): Stream[F, RunId] = {
       def getRequest =
         Sync[F].delay(new ScanRequest().withTableName(tableName))
 
@@ -183,14 +179,12 @@ object ProcessManifest {
             Stream.empty
         }
 
-      val stream = runStream(runRequest)
+      runStream(runRequest)
         .flatMap { result => Stream.emits(result.getItems.asScala.toList) }
         .flatMap { item => RunId.parse(item.asScala) match {
           case Right(runId) => Stream.emit(runId)
           case Left(error) => Stream.raiseError[F](new RuntimeException(error))
         }}
-
-      stream.compile.toList.attempt.map { either => either.leftMap(_.getMessage) }
     }
 
     def add(tableName: String, runId: String): F[Unit] =
@@ -226,16 +220,14 @@ object ProcessManifest {
         _ <- runDynamoDbQuery[F, Unit](state, query)
       } yield ()
 
-    def getUnprocessed(manifestTable: String, enrichedInput: S3Folder): F[Either[String, List[String]]] =
+    def getUnprocessed(manifestTable: String, enrichedInput: S3Folder): F[List[String]] =
       for {
         s3 <- state.get.map(_.s3)
         allRuns <- Sync[F].delay(RunManifests.listRunIds(s3, enrichedInput.path))
-        result <- scan(manifestTable).map {
-          case Right(state) => Right(allRuns.filterNot(run => contains(state, run)))
-          case Left(error) => Left(error)
+        result <- scan(manifestTable).compile.fold(allRuns.toSet) { (s3Runs, manifestRun) =>
+          s3Runs - manifestRun.runId
         }
-      } yield result
-
+      } yield result.toList
 
     // Conversions should not be necessary as realTime returns TZ-independent timestamp
     private def getUtcSeconds: F[Int] =
