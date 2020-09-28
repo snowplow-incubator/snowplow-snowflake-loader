@@ -19,8 +19,6 @@ import io.circe.parser._
 
 import com.snowplowanalytics.snowflake.transformer.TransformerJobSpec
 
-import org.specs2.Specification
-
 object EventDeduplicationSpec {
   import TransformerJobSpec._
 

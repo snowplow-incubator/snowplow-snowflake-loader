@@ -68,7 +68,8 @@ packages:
     build_version : <%= FUNC['sbt_version(.)'] %>
 
     build_commands:
-      - sbt clean startDynamodbLocal assembly dynamodbLocalTestCleanup stopDynamodbLocal
+      - sbt "project loader" clean startDynamodbLocal assembly dynamodbLocalTestCleanup stopDynamodbLocal
+      - sbt "project transformer" clean startDynamodbLocal assembly dynamodbLocalTestCleanup stopDynamodbLocal
 
     # Required: Artifact
     artifacts:
@@ -79,7 +80,7 @@ packages:
 
         # The binaries to put in the zip
         binary_paths:
-          - transformer/target/scala-2.11/snowplow-snowflake-transformer-<%= ENV['TRAVIS_TAG'] %>.jar
+          - transformer/target/scala-2.12/snowplow-snowflake-transformer-<%= ENV['TRAVIS_TAG'] %>.jar
 
       - type   : "asis"
         prefix : "snowplow-snowflake-loader-"
@@ -87,4 +88,4 @@ packages:
 
         # The binaries to put in the zip
         binary_paths:
-          - loader/target/scala-2.11/snowplow-snowflake-loader-<%= ENV['TRAVIS_TAG'] %>.jar
+          - loader/target/scala-2.12/snowplow-snowflake-loader-<%= ENV['TRAVIS_TAG'] %>.jar

@@ -12,9 +12,6 @@
  */
 package com.snowplowanalytics.snowflake.loader
 
-import cats.syntax.functor._
-import cats.syntax.apply._
-
 import cats.effect.{ExitCode, IO, IOApp, Sync}
 
 import com.snowplowanalytics.snowflake.core.{Cli, ProcessManifest}

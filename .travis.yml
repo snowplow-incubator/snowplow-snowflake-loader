@@ -9,7 +9,9 @@ before_script:
 - snyk -v
 - snyk auth $SNYK_TOKEN
 script:
-- sbt clean startDynamodbLocal +test dynamodbLocalTestCleanup stopDynamodbLocal
+- sbt "project core" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
+- sbt "project transformer" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
+- sbt "project loader" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
 before_deploy:
 - pip install --user release-manager==0.4.1
 deploy:
