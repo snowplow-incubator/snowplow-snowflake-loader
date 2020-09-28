@@ -31,8 +31,6 @@ import com.amazonaws.services.dynamodbv2.model.{ResourceNotFoundException, ScanR
 import com.snowplowanalytics.snowplow.eventsmanifest.{DynamoDbManifest, EventsManifest, EventsManifestConfig}
 import com.snowplowanalytics.snowflake.transformer.TransformerJobSpec
 
-import org.specs2.Specification
-
 object CrossBatchDeduplicationSpec {
   import TransformerJobSpec._
 

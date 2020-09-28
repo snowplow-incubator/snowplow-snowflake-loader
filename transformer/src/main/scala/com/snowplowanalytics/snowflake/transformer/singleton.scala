@@ -21,8 +21,6 @@ object singleton {
 
   /** Singleton for EventsManifest to maintain one per node. */
   object EventsManifestSingleton {
-    import EventsManifest._
-
     @volatile private var instance: Option[EventsManifest] = _
 
     /**

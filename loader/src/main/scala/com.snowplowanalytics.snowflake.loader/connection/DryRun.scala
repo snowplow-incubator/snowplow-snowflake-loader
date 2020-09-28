@@ -13,8 +13,6 @@
 package com.snowplowanalytics.snowflake.loader
 package connection
 
-import cats.syntax.functor._
-import cats.syntax.apply._
 import cats.effect.{ Sync, IO }
 import cats.effect.concurrent.Ref
 

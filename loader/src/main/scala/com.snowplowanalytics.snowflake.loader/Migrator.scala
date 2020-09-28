@@ -12,8 +12,6 @@
  */
 package com.snowplowanalytics.snowflake.loader
 
-import java.sql.{Connection => JdbcConnection}
-
 import cats.syntax.flatMap._
 import cats.syntax.functor._
 import cats.effect.{ Sync, ExitCode }

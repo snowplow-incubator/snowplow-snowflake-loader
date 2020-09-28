@@ -10,6 +10,7 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
+
 lazy val root = project.in(file("."))
   .settings(
     BuildSettings.buildSettings,
@@ -20,45 +21,48 @@ lazy val root = project.in(file("."))
   )
   .aggregate(core, loader, transformer)
 
-lazy val core = project
-  .settings(moduleName := "snowplow-snowflake-core")
+lazy val core = project.in(file("core"))
   .settings(BuildSettings.buildSettings)
   .settings(BuildSettings.scalifySettings)
-  .settings(libraryDependencies ++= commonDependencies)
+  .settings(
+    publishArtifact := false,
+    libraryDependencies ++= commonDependencies ++ commonTestDependencies
+  )
 
-lazy val loader = project
+lazy val loader = project.in(file("loader"))
+  .dependsOn(core)
   .settings(moduleName := "snowplow-snowflake-loader")
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.buildSettings)
   .settings(
     libraryDependencies ++= Seq(
+      Dependencies.jackson,
       Dependencies.snowflakeJdbc,
       Dependencies.ssm,
       Dependencies.sts
-    ) ++ commonDependencies
+    ) ++ commonDependencies ++ commonTestDependencies
   )
+
+lazy val transformer = project.in(file("transformer"))
   .dependsOn(core)
-
-
-lazy val transformer = project
   .settings(moduleName := "snowplow-snowflake-transformer")
-  .settings(BuildSettings.scalifySettings)
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.buildSettings)
   .settings(
-    resolvers ++= Seq(
-      "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/"
-    ),
     libraryDependencies ++= Seq(
       Dependencies.hadoop,
+      Dependencies.hadoopCommon,
+      Dependencies.hadoopClient,
       Dependencies.spark,
       Dependencies.sparkSql,
       Dependencies.schemaDdl,
+      Dependencies.badRows,
+      Dependencies.circeJawn,
       Dependencies.circeCore,
+      Dependencies.circeOptics,
       Dependencies.circeLiteral
-    ) ++ commonDependencies
+    ) ++ commonTestDependencies
   )
-  .dependsOn(core)
 
 lazy val commonDependencies = Seq(
   // Scala
@@ -70,7 +74,9 @@ lazy val commonDependencies = Seq(
   Dependencies.enumeratum,
   Dependencies.igluClient,
   Dependencies.eventsManifest,
-  // Scala (test-only)
+)
+
+lazy val commonTestDependencies = Seq(
   Dependencies.specs2,
   Dependencies.specs2Scalacheck,
   Dependencies.scalacheck

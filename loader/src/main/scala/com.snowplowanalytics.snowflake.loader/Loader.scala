@@ -10,17 +10,16 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowflake
-package loader
+package com.snowplowanalytics.snowflake.loader
 
-import cats.{Applicative, ApplicativeError, Apply, Functor, MonadError, Show}
+import cats.{Applicative, ApplicativeError, Apply, MonadError, Show}
 import cats.data.{EitherT, NonEmptyList, Validated, ValidatedNel}
 import cats.implicits._
 import cats.effect.{ExitCode, Sync}
-import ast.{Show => StatementShow, _}
-import com.snowplowanalytics.snowflake.core.Config.AuthMethod
-import core.{Config, ProcessManifest, RunId}
-import loader.connection.Database
+
+import com.snowplowanalytics.snowflake.loader.ast.{Show => StatementShow, _}
+import com.snowplowanalytics.snowflake.core.{Config, ProcessManifest, RunId}
+import com.snowplowanalytics.snowflake.loader.connection.Database
 
 object Loader {
 
@@ -143,9 +142,9 @@ object Loader {
           s"stageUrl [${conf.stageUrl}] provided in loader configuration").invalidNel[Unit]
       }
 
-    val storageIntegrationCheck: (Map[String, Object], AuthMethod) => ValidatedNel[String, Unit] = (stage, auth) =>
+    val storageIntegrationCheck: (Map[String, Object], Config.AuthMethod) => ValidatedNel[String, Unit] = (stage, auth) =>
       auth match {
-        case AuthMethod.StorageIntegration(intName) =>
+        case Config.AuthMethod.StorageIntegration(intName) =>
           stage.get("storage_integration").fold(s"No storage integration is found for stage [${conf.stage}]".invalidNel[Unit]){ sfIntName =>
             if (sfIntName == intName.toUpperCase) ().validNel[String]
             else (s"Stage [${conf.stage}] is configured to use integration [$sfIntName] which does not match " +

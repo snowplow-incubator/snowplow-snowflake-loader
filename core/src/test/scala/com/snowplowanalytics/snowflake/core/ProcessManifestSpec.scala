@@ -28,7 +28,6 @@ import java.time.format.DateTimeFormatter
 import cats.syntax.flatMap._
 import cats.syntax.apply._
 import cats.syntax.functor._
-import cats.syntax.either._
 import cats.syntax.traverse._
 import cats.instances.list._
 

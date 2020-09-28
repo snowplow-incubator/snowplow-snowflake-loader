@@ -23,21 +23,24 @@ import scala.util.Random
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.apache.commons.io.filefilter.IOFileFilter
+
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.serializer.KryoSerializer
 
 import cats.syntax.option._
 import cats.syntax.either._
+
+import io.circe.Json
+import io.circe.optics.JsonPath._
 
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.iglu.client.Resolver
 
-import com.snowplowanalytics.snowflake.core.{ Cli, idClock }
+import com.snowplowanalytics.snowflake.core.{Cli, idClock}
 import com.snowplowanalytics.snowflake.transformer.TransformerJobConfig.FSConfig
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
-
-import org.apache.spark.serializer.KryoSerializer
 
 import org.specs2.mutable.Specification
 import org.specs2.matcher.Matcher
@@ -206,6 +209,14 @@ object TransformerJobSpec {
     dynamodbDuplicateStorageRegion,
     dynamodbDuplicateStorageTable
   )
+
+  val DefaultTimestamp = "2020-09-29T10:38:56.653Z"
+
+  val clearTimestamp: Json => Json =
+    root.data.failure.timestamp.string.set(DefaultTimestamp)
+
+  def clearTimestamps(jsons: List[Json]): List[Json] =
+    jsons.map(clearTimestamp)
 }
 
 /** Trait to mix in in every spec for the transformer job. */

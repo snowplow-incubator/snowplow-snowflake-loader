@@ -16,19 +16,20 @@ object Dependencies {
 
   object V {
     // Java
-    val hadoop           = "2.8.5"
+    val hadoop           = "3.2.1"
     val snowflakeJdbc    = "3.12.10"
-    val aws              = "1.11.209"
+    val aws              = "1.11.870"
     // Scala
-    val spark            = "2.2.0"
-    val fs2              = "1.0.5"
+    val spark            = "3.0.0"
+    val fs2              = "2.4.4"
     val decline          = "1.0.0"
-    val analyticsSdk     = "0.4.2"
+    val analyticsSdk     = "2.0.1"
     val enumeratum       = "1.5.13"
-    val igluClient       = "0.6.2"
-    val eventsManifest   = "0.2.0"
+    val igluClient       = "1.0.2"
+    val eventsManifest   = "0.3.0"
+    val badRows          = "2.1.0"
     val schemaDdl        = "0.9.0"
-    val circe            = "0.11.1"
+    val circe            = "0.13.0"
     val jackson          = "2.6.5"
     // Scala (test only)
     val specs2           = "4.6.0"
@@ -37,6 +38,8 @@ object Dependencies {
 
   // Java
   val hadoop           = "org.apache.hadoop"     % "hadoop-aws"                    % V.hadoop         % Provided
+  val hadoopCommon     = "org.apache.hadoop"     % "hadoop-common"                 % V.hadoop         % Provided
+  val hadoopClient     = "org.apache.hadoop"     % "hadoop-mapreduce-client-core"  % V.hadoop         % Provided
   val snowflakeJdbc    = "net.snowflake"         % "snowflake-jdbc"                % V.snowflakeJdbc
   val s3               = "com.amazonaws"         % "aws-java-sdk-s3"               % V.aws
   val dynamodb         = "com.amazonaws"         % "aws-java-sdk-dynamodb"         % V.aws
@@ -50,11 +53,17 @@ object Dependencies {
   val decline          = "com.monovore"          %% "decline"                      % V.decline
   val analyticsSdk     = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
   val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
-  val igluClient       = ("com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient)
+  val igluClient       = "com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient
+  val jackson          = "com.fasterxml.jackson.core" % "jackson-databind"         % V.jackson
+  val eventsManifest   = ("com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest)
     .exclude("com.fasterxml.jackson.core", "jackson-databind")  // Incompatible with Spark
-  val eventsManifest   = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
-  val schemaDdl        = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
+  val badRows          = ("com.snowplowanalytics" %% "snowplow-badrows"             % V.badRows)
+    .exclude("com.fasterxml.jackson.core", "jackson-databind")  // Incompatible with Spark
+  val schemaDdl        = ("com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl)
+  .exclude("com.fasterxml.jackson.core", "jackson-databind")  // Incompatible with Spark
+  val circeJawn        = "io.circe"              %% "circe-jawn"                   % V.circe          % Test
   val circeCore        = "io.circe"              %% "circe-core"                   % V.circe          % Test
+  val circeOptics      = "io.circe"              %% "circe-optics"                 % V.circe          % Test
   val circeLiteral     = "io.circe"              %% "circe-literal"                % V.circe          % Test
 
 

@@ -17,7 +17,6 @@ import java.time.Instant
 import org.apache.spark.sql.{Row, SaveMode, SparkSession}
 import org.apache.spark.sql.types.{StringType, StructField, StructType}
 
-import cats.syntax.either._
 import cats.syntax.foldable._
 import cats.instances.list._
 import cats.effect.IO
@@ -38,27 +37,24 @@ object TransformerJob {
     classOf[SelfDescribingData[_]],
     classOf[Event],
     classOf[Instant],
-    classOf[com.snowplowanalytics.iglu.core.SchemaVer$Full],
-    classOf[io.circe.JsonObject$LinkedHashMapJsonObject],
-    classOf[io.circe.Json$JObject],
-    classOf[io.circe.Json$JString],
-    classOf[io.circe.Json$JArray],
-    classOf[io.circe.Json$JNull$],
-    classOf[io.circe.Json$JNumber],
-    classOf[io.circe.Json$JBoolean],
     classOf[io.circe.Json],
+    Class.forName("com.snowplowanalytics.iglu.core.SchemaVer$Full"),
+    Class.forName("io.circe.JsonObject$LinkedHashMapJsonObject"),
+    Class.forName("io.circe.Json$JObject"),
+    Class.forName("io.circe.Json$JString"),
+    Class.forName("io.circe.Json$JNull$"),
     Class.forName("io.circe.JsonLong"),
     Class.forName("io.circe.JsonDecimal"),
     Class.forName("io.circe.JsonBigDecimal"),
     Class.forName("io.circe.JsonBiggerDecimal"),
     Class.forName("io.circe.JsonDouble"),
     Class.forName("io.circe.JsonFloat"),
+    classOf[org.apache.spark.sql.execution.datasources.WriteTaskResult],
+    classOf[org.apache.spark.sql.execution.datasources.ExecutedWriteSummary],
+    classOf[org.apache.spark.sql.execution.datasources.BasicWriteTaskStats],
+    Class.forName("org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage"),
     classOf[java.util.LinkedHashMap[_, _]],
     classOf[java.util.ArrayList[_]],
-    classOf[scala.collection.immutable.Map$EmptyMap$],
-    classOf[scala.collection.immutable.Set$EmptySet$],
-    classOf[org.apache.spark.internal.io.FileCommitProtocol$TaskCommitMessage],
-    classOf[org.apache.spark.sql.execution.datasources.FileFormatWriter$WriteTaskResult]
   )
 
   /** Process all directories, saving state into DynamoDB */
@@ -115,7 +111,7 @@ object TransformerJob {
       case Right(Some(event)) => Some(event)
       case Right(None) => None
       case Left(_) if storeBadRows => None
-      case Left(badRow) => throw new RuntimeException(s"Unhandled bad row ${badRow.toCompactJson}")
+      case Left(badRow) => throw new RuntimeException(s"Unhandled bad row ${badRow.compact}")
     }
 
     // Deduplicate the events in a batch if inbatch flagged set
@@ -144,7 +140,7 @@ object TransformerJob {
       case Some(badOutput) =>
         val withError = inputRDD
           .flatMap(_.swap.toOption)
-          .map(e => Row(e.toCompactJson))
+          .map(e => Row(e.compact))
         spark.createDataFrame(withError, StructType(StructField("_", StringType, true) :: Nil))
           .write
           .mode(SaveMode.Overwrite)
