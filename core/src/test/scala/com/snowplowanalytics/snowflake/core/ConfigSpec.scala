@@ -88,7 +88,7 @@ class ConfigSpec extends Specification {
 
       "--resolver", s"${resolverUrl.getPath}",
       "--config", s"${configUrl.getPath}"
-    ).toArray
+    )
 
     val expected = Cli.Loader.Setup(
       Config(
@@ -123,7 +123,7 @@ class ConfigSpec extends Specification {
 
       "--dry-run",
       "--resolver", s"${resolverUrl.getPath}",
-      "--config", s"${configUrl.getPath}").toArray
+      "--config", s"${configUrl.getPath}")
 
     val expected = Cli.Loader.Load(
       Config(
@@ -187,7 +187,7 @@ class ConfigSpec extends Specification {
       "--base64",
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config)
-    ).toArray
+    )
 
     val expected = Cli.Loader.Load(
       Config(
@@ -266,7 +266,7 @@ class ConfigSpec extends Specification {
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config),
       "--base64"
-    ).toArray
+    )
 
     val expected = Cli.Loader.Setup(
       Config(
@@ -301,7 +301,7 @@ class ConfigSpec extends Specification {
 
       "--dry-run",
       "--resolver", s"${resolverUrl.getPath}",
-      "--config", s"${secureConfigUrl.getPath}").toArray
+      "--config", s"${secureConfigUrl.getPath}")
 
     val expected = Cli.Loader.Load(
       Config(
@@ -337,7 +337,7 @@ class ConfigSpec extends Specification {
 
       "--dry-run",
       "--resolver", s"${resolverUrl.getPath}",
-      "--config", s"${noauthConfigUrl.getPath}").toArray
+      "--config", s"${noauthConfigUrl.getPath}")
 
     val expected = Cli.Loader.Load(
       Config(
@@ -415,7 +415,7 @@ class ConfigSpec extends Specification {
       "--inbatch-deduplication",
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config),
-      "--events-manifest", encodeToBase64(eventManifestConfig)).toArray
+      "--events-manifest", encodeToBase64(eventManifestConfig))
 
     val expected = Cli.Transformer(
       Config(
@@ -498,7 +498,7 @@ class ConfigSpec extends Specification {
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config),
       "--base64"
-    ).toArray
+    )
 
     val expected = Cli.Loader.Load(
       Config(
@@ -564,7 +564,7 @@ class ConfigSpec extends Specification {
       "--skip", "schema",
       "--skip", "stage",
       "--skip", "table"
-    ).toArray
+    )
 
     val expected = Cli.Loader.Setup(
       Config(
@@ -632,7 +632,7 @@ class ConfigSpec extends Specification {
       "--skip", "stage",
       "--skip", "foo",
       "--skip", "bar"
-    ).toArray
+    )
 
     val result = Cli.Loader.parse(args).value.unsafeRunSync()
 
@@ -675,7 +675,7 @@ class ConfigSpec extends Specification {
       "--resolver", resolverBase64,
       "--config", encodeToBase64(config),
       "--base64"
-    ).toArray
+    )
 
     val expected = Cli.Loader.Setup(
       Config(

@@ -12,7 +12,7 @@
  */
 package com.snowplowanalytics.snowflake.core
 
-import scala.collection.convert.decorateAsScala._
+import scala.jdk.CollectionConverters._
 
 import cats.data.{Validated, ValidatedNel}
 import cats.implicits._
@@ -20,7 +20,7 @@ import cats.implicits._
 import com.amazonaws.services.dynamodbv2.model.AttributeValue
 
 import org.joda.time.{ DateTime, DateTimeZone }
-import Config.S3Folder
+import com.snowplowanalytics.snowflake.core.Config.S3Folder
 
 /**
   * S3 folder saved in processing manifest. Added by Transformer job
@@ -231,7 +231,7 @@ object RunId {
       s"ShredTypes -> $shredTypes, " +
       s"SavedTo -> $savedTo, " +
       s"LoadedAt -> $loadedAt, " +
-      s"AddedBy -> $addedAt, " +
+      s"AddedBy -> $addedBy, " +
       s"LoadedBy -> $loadedBy, " +
       s"ToSkip -> $toSkip"
 

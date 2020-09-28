@@ -20,14 +20,18 @@ import io.circe.Json
 import io.circe.syntax._
 
 import cats.syntax.either._
-import cats.data.NonEmptyList
 
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
+
+import com.snowplowanalytics.snowflake.generated.ProjectMetadata
+
 import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, SnowplowEvent}
-import com.snowplowanalytics.snowflake.transformer.BadRow.Failure
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifest
+import com.snowplowanalytics.snowplow.badrows.{BadRow, Processor, Payload}
 
 object Transformer {
+
+  val processor = Processor("snowplow-snowflake-transformer", ProjectMetadata.version)
 
   /**
     * Transform jsonified TSV to pair of shredded keys and enriched event in JSON format
@@ -65,7 +69,7 @@ object Transformer {
           Right(storage.put(eventId, eventFingerprint, etlTstamp))
         } catch {
           case NonFatal(e) =>
-            Left(BadRow.SnowflakeFailure(event, NonEmptyList.one(Failure.DeduplicationError(Option(e.getMessage).getOrElse(e.toString)))))
+            Left(BadRow.LoaderRuntimeError(processor, Option(e.getMessage).getOrElse(e.toString), Payload.LoaderPayload(event)))
         }
       case None => Right(true)
     }
@@ -77,11 +81,10 @@ object Transformer {
     * @param line enriched event TSV
     * @return Event case class instance
     */
-  def jsonify(line: String): Either[BadRow, Event] = {
+  def jsonify(line: String): Either[BadRow, Event] =
     Event.parse(line)
       .toEither
-      .leftMap(errors => BadRow.ParsingFailure(line, errors))
-  }
+      .leftMap(error => BadRow.LoaderParsingError(processor, error, Payload.RawPayload(line)))
 
   /**
     * Truncate a Snowplow event's fields based on atomic schema

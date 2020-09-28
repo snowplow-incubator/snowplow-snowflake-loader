@@ -20,8 +20,8 @@ import io.circe.syntax._
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 
-import com.snowplowanalytics.snowflake.transformer.BadRow.Failure.ValueError
-import com.snowplowanalytics.snowflake.transformer.BadRow.SnowflakeFailure
+import com.snowplowanalytics.snowplow.badrows.{ BadRow, Payload }
+import com.snowplowanalytics.snowplow.badrows.Failure.GenericFailure
 
 /**
   * Place where errors specific to Snowflake are checked
@@ -50,12 +50,14 @@ object SnowflakeErrorCheck {
       lessThanZero(event.refr_dvce_tstamp, "refr_dvce_tstamp"),
       lessThanZero(event.true_tstamp, "true_tstamp")
     )
-    errList.flatten.toNel.map(failures => SnowflakeFailure(event, failures))
+    errList.flatten.toNel.map { failures =>
+      BadRow.GenericError(Transformer.processor, GenericFailure(Instant.now(), failures), Payload.RawPayload(event.asJson.noSpaces))
+    }
   }
 
-  private def lessThanZero(timestamp: Option[Instant], column: String): Option[ValueError] =
+  private def lessThanZero(timestamp: Option[Instant], column: String): Option[String] =
     for {
       ts <- timestamp
       if ts.getEpochSecond < timestampZero
-    } yield ValueError(ts.toString.asJson, column, "Timestamp is out of Snowflake range")
+    } yield s"Timestamp ${ts.toString} is out of Snowflake range, at column $column"
 }

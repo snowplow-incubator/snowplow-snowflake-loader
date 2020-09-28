@@ -18,6 +18,7 @@ import Keys._
 // sbt-assembly
 import sbtassembly._
 import sbtassembly.AssemblyKeys._
+import com.eed3si9n.jarjarabrams.ShadeRule
 
 /**
  * Common settings-patterns for Snowplow apps and libraries.
@@ -26,31 +27,15 @@ import sbtassembly.AssemblyKeys._
 object BuildSettings {
 
   lazy val buildSettings = Seq[Setting[_]](
-    name := "snowplow-snowflake-loader",
     version := "0.7.1",
     organization := "com.snowplowanalytics",
-    scalaVersion := "2.11.12",
+    scalaVersion := "2.12.12",
     resolvers ++= Seq(
-      "Sonatype OSS Snapshots" at "http://oss.sonatype.org/content/repositories/snapshots/",
+      "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots/",
       "Snowplow Bintray" at "https://snowplow.bintray.com/snowplow-maven/"
     ),
+    Global / concurrentRestrictions += Tags.limit(Tags.Test, 1),
 
-    scalacOptions := Seq(
-      "-deprecation",
-      "-encoding", "UTF-8",
-      "-feature",
-      "-unchecked",
-      "-Ywarn-dead-code",
-      "-Ywarn-inaccessible",
-      "-Ywarn-infer-any",
-      "-Ywarn-nullary-override",
-      "-Ywarn-nullary-unit",
-      "-Ywarn-numeric-widen",
-      "-language:higherKinds",
-      "-Ywarn-unused",
-      "-Ypartial-unification",
-      "-Ywarn-value-discard"
-    ),
     javacOptions := Seq(
       "-source", "1.8",
       "-target", "1.8",
@@ -96,8 +81,9 @@ object BuildSettings {
     },
 
     assemblyMergeStrategy in assembly := {
-      case "project.clj" => MergeStrategy.discard // Leiningen build files
       case x if x.startsWith("META-INF") => MergeStrategy.discard
+      case x if x.startsWith("mime.types") => MergeStrategy.first
+      case "module-info.class" => MergeStrategy.discard
       case x if x.endsWith(".html") => MergeStrategy.discard
       case x if x.endsWith("public-suffix-list.txt") => MergeStrategy.last
       case PathList("org", "apache", "spark", "unused", tail@_*) => MergeStrategy.first

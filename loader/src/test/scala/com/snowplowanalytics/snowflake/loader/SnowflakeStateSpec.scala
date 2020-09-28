@@ -42,6 +42,7 @@ class SnowflakeStateSpec extends Specification {
         case id @ ProcessedRunId("enriched/archived/run-01", _, _, types, _, _, _) => FolderToLoad(id, types.toSet)
         case id @ ProcessedRunId("enriched/archived/run-02", _, _, _, _, _, _) => FolderToLoad(id, Set.empty)
         case id @ ProcessedRunId("enriched/archived/run-03", _, _, _, _, _, _) => FolderToLoad(id, Set.empty)
+        case id => throw new RuntimeException(s"Unexpected id $id")
       }
       val expected = SnowflakeState(expectedFolders)
 
@@ -87,6 +88,7 @@ class SnowflakeStateSpec extends Specification {
         case id @ ProcessedRunId("enriched/archived/run-01", _, _, _, _, _, _) => FolderToLoad(id, Set.empty)
         case id @ ProcessedRunId("enriched/archived/run-02", _, _, _, _, _, _) => FolderToLoad(id, Set.empty)
         case id @ ProcessedRunId("enriched/archived/run-03", _, _, _, _, _, _) => FolderToLoad(id, Set.empty)
+        case id => throw new RuntimeException(s"Unexpected id $id")
       }
       val expected = SnowflakeState(expectedFolders)
 

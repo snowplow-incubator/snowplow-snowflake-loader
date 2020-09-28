@@ -16,8 +16,7 @@ import java.util.{ Map => JMap }
 import java.util.concurrent.TimeUnit
 import java.time.{ Instant, ZoneId }
 
-import scala.collection.convert.decorateAsJava._
-import scala.collection.convert.decorateAsScala._
+import scala.jdk.CollectionConverters._
 
 import com.amazonaws.AmazonServiceException
 import com.amazonaws.auth.{AWSStaticCredentialsProvider, DefaultAWSCredentialsProviderChain}
@@ -31,7 +30,6 @@ import cats.effect.concurrent.Ref
 
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.analytics.scalasdk.RunManifests
 import com.snowplowanalytics.snowflake.core.Config.S3Folder
 import com.snowplowanalytics.snowflake.generated.ProjectMetadata
 

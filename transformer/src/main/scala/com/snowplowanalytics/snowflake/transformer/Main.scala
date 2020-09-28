@@ -17,7 +17,6 @@ import org.apache.spark.sql.SparkSession
 import org.apache.spark.serializer.KryoSerializer
 
 import cats.data.EitherT
-import cats.syntax.functor._
 import cats.syntax.either._
 import cats.effect.{ IO, IOApp, ExitCode }
 
@@ -28,7 +27,7 @@ import com.snowplowanalytics.iglu.core.{ SchemaKey, SchemaVer }
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 
-import com.snowplowanalytics.snowflake.core.{ProcessManifest, Cli, idClock}
+import com.snowplowanalytics.snowflake.core.{ProcessManifest, Cli}
 import com.snowplowanalytics.snowflake.transformer.TransformerJobConfig.S3Config
 
 
