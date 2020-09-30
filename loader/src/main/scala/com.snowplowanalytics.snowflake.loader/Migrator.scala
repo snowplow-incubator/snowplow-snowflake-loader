@@ -14,6 +14,7 @@ package com.snowplowanalytics.snowflake.loader
 
 import cats.syntax.flatMap._
 import cats.syntax.functor._
+import cats.instances.all._
 import cats.effect.{ Sync, ExitCode }
 
 import com.snowplowanalytics.snowflake.core.Config
@@ -25,7 +26,7 @@ import com.snowplowanalytics.snowflake.loader.ast.AlterTable.AlterColumnDatatype
 object Migrator {
 
   /** Run migration process */
-  def run[F[_]: Sync: Database](config: Config, loaderVersion: String): F[ExitCode] = {
+  def run[F[_]: Sync: Database: Logger](config: Config, loaderVersion: String): F[ExitCode] = {
     def alterColumn(connection: Database.Connection, column: String, columnType: SnowflakeDatatype): F[Unit] =
       Database[F].executeAndOutput(connection, AlterColumnDatatype(config.schema, Defaults.Table, column, columnType))
 
@@ -45,7 +46,7 @@ object Migrator {
         } yield ExitCode.Success
       case _ =>
         val message = s"Unrecognized Snowplow Snowflake Loader version: $loaderVersion. (Supported: 0.4.0)"
-        Sync[F].delay(System.err.println(message)).as(ExitCode.Error)
+        Logger[F].error(message).as(ExitCode.Error)
     }
   }
 }

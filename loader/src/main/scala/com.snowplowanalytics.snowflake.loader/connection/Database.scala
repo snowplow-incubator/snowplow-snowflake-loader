@@ -10,17 +10,18 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowflake.loader
-package connection
+package com.snowplowanalytics.snowflake.loader.connection
 
 import java.sql.{Connection => JdbcConnection}
 
+import cats.Functor
+import cats.syntax.functor._
 import cats.effect.IO
 
 import com.snowplowanalytics.snowflake.loader.ast._
 import com.snowplowanalytics.snowflake.core.Config
 
-import Database.Connection
+import com.snowplowanalytics.snowflake.loader.connection.Database.Connection
 
 /** DB-connection adapter */
 trait Database[F[_]] {
@@ -32,6 +33,8 @@ trait Database[F[_]] {
   def executeAndOutput[S: Statement](connection: Connection, ast: S): F[Unit]
   def executeAndCountRows[S: Statement](connection: Connection, ast: S): F[Int]
   def executeAndReturnResult[S: Statement](connection: Connection, ast: S): F[List[Map[String, Object]]]
+
+  def describeTable(connection: Connection, schema: String, table: String): F[List[Either[String, Column]]]
 }
 
 object Database {
@@ -46,4 +49,8 @@ object Database {
     case class Jdbc private(conn: JdbcConnection) extends Connection
     case class Dry(conn: DryRun.Connection) extends Connection
   }
+
+  /** Check state of the table and get a list of warnings (unmatches) if any */
+  def checkState[F[_]: Database: Functor](conn: Connection, schema: String, table: String): F[List[String]] =
+    Database[F].describeTable(conn, schema, table).map(AtomicDef.compare)
 }

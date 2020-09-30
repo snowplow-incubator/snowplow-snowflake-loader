@@ -22,7 +22,22 @@ case class CopyInto(
   credentials: Option[Auth],
   fileFormat: FileFormat,
   onError: Option[OnError],
-  stripNullValues: Boolean)   // Valid only for JSON
+  stripNullValues: Boolean) {     // Valid only for JSON
+  /** Transform into statement, hiding all secrets */
+  def sanitized: String = {
+    val secrets = credentials match {
+      case None =>
+        Nil
+      case Some(Auth.AwsKeys(id, key, token)) =>
+        List(id, key) ++ token.toList
+      case Some(Auth.AwsRole(roleArn)) =>
+        List(roleArn)
+      case Some(Auth.StorageIntegration(name)) =>
+        List(name)
+    }
+    secrets.foldLeft(this.getStatement.value) { (result, s) => result.replace(s, "*") }
+  }
+}
 
 object CopyInto {
   case class From(schema: String, stageName: String, path: String)

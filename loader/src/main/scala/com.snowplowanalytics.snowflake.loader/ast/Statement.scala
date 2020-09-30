@@ -174,4 +174,9 @@ object Statement {
       SqlStatement(s"SHOW warehouses$schemaPattern")
     }
   }
+
+  implicit object DescribeTableStatement extends Statement[DescribeTable] {
+    def getStatement(ast: DescribeTable): SqlStatement =
+      SqlStatement(s"DESCRIBE TABLE ${ast.schema}.${ast.table}")
+  }
 }
