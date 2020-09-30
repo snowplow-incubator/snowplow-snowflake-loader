@@ -38,7 +38,8 @@ lazy val loader = project.in(file("loader"))
     libraryDependencies ++= Seq(
       Dependencies.snowflakeJdbc,
       Dependencies.ssm,
-      Dependencies.sts
+      Dependencies.sts,
+      Dependencies.jackson,
     ) ++ commonDependencies ++ commonTestDependencies
   )
 
