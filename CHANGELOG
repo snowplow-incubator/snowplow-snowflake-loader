@@ -1,3 +1,14 @@
+Version 0.8.0 (2020-10-06)
+--------------------------
+Truncate long VARCHAR fields before casting (#126)
+Fix YARN timeout exception (#124)
+Fix jackson-databind version to 2.9.10.6 (#123)
+Point README links to documentation website (#122)
+Fix sbt version bump in CHANGELOG (#118)
+Fix Snyk integration (#115)
+Add extensive logging (#120)
+Bump Scala to 2.12 (#119)
+
 Version 0.7.1 (2020-09-17)
 --------------------------
 Avoid loading whole DynamoDB manifest into memory (#116)
