@@ -41,6 +41,8 @@ object Main extends IOApp {
 
         // Always use EMR Role role for manifest-access
         for {
+          // Eager SparkContext initializing to avoid YARN timeout
+          spark <- getSession
           state <- ProcessManifest.initState[IO](appConfig.awsRegion)
           manifest = ProcessManifest.awsSyncProcessManifest[IO](state)
 
@@ -55,8 +57,6 @@ object Main extends IOApp {
               case Left(error) => IO.raiseError[Schema](new RuntimeException(error))
             }
 
-          // Eager SparkContext initializing to avoid YARN timeout
-          spark <- getSession
           exitCode <- runFolders match {
             case Right(folders) =>
               val configs = folders.map(S3Config(appConfig.input, appConfig.stageUrl, appConfig.badOutputUrl, _))
