@@ -36,10 +36,9 @@ lazy val loader = project.in(file("loader"))
   .settings(BuildSettings.buildSettings)
   .settings(
     libraryDependencies ++= Seq(
-      Dependencies.jackson,
       Dependencies.snowflakeJdbc,
       Dependencies.ssm,
-      Dependencies.sts
+      Dependencies.sts,
     ) ++ commonDependencies ++ commonTestDependencies
   )
 
@@ -65,6 +64,7 @@ lazy val transformer = project.in(file("transformer"))
   )
 
 lazy val commonDependencies = Seq(
+  Dependencies.jackson,
   // Scala
   Dependencies.analyticsSdk,
   Dependencies.fs2,
