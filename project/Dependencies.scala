@@ -30,7 +30,7 @@ object Dependencies {
     val badRows          = "2.1.0"
     val schemaDdl        = "0.9.0"
     val circe            = "0.13.0"
-    val jackson          = "2.6.5"
+    val jackson          = "2.9.10.6"
     // Scala (test only)
     val specs2           = "4.6.0"
     val scalacheck       = "1.14.1"
@@ -54,6 +54,7 @@ object Dependencies {
   val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
   val igluClient       = ("com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient)
     .exclude("com.fasterxml.jackson.core", "jackson-databind")  // Incompatible with Spark
+  val jackson          = "com.fasterxml.jackson.core" % "jackson-databind"         % V.jackson
   val eventsManifest   = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
   val badRows          = "com.snowplowanalytics" %% "snowplow-badrows"             % V.badRows
   val schemaDdl        = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
