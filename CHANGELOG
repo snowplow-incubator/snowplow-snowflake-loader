@@ -9,7 +9,7 @@ Add Snyk credentials to .travis.yml (#113)
 Add authentication support for storage integration (#106)
 Update default JDBC host (#102)
 Fix sbt-dynamodb usage (#111)
-Bump SBT to 1.2.8 (#110)
+Bump SBT to 1.3.13 (#110)
 Bump snowflake-jdbc to 3.12.10 (#109)
 
 Version 0.6.0 (2020-01-31)
