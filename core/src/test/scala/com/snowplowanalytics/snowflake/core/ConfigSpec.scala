@@ -112,6 +112,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       Set(),
+      false,
       false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
@@ -146,7 +147,8 @@ class ConfigSpec extends Specification {
         database = "test_db",
         maxError = None,
         jdbcHost = None),
-      true)
+      true,
+      false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
   }
@@ -210,7 +212,9 @@ class ConfigSpec extends Specification {
         database = "test_db",
         maxError = None,
         jdbcHost = None),
-      true)
+      true,
+      false)
+
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
 
@@ -290,6 +294,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       Set(),
+      false,
       false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
@@ -326,7 +331,8 @@ class ConfigSpec extends Specification {
         database = "test_db",
         maxError = None,
         jdbcHost = None),
-      true)
+      true,
+      false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
   }
@@ -359,7 +365,8 @@ class ConfigSpec extends Specification {
         database = "test_db",
         maxError = None,
         jdbcHost = None),
-      true)
+      true,
+      false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
   }
@@ -521,7 +528,8 @@ class ConfigSpec extends Specification {
         database = "test_db",
         maxError = Some(10000),
         jdbcHost = Some("snowplow.us-west-1.azure.snowflakecomputing.com")),
-      true)
+      true,
+      false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
   }
@@ -588,6 +596,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       Set(SetupSteps.Schema, SetupSteps.Stage, SetupSteps.Table),
+      false,
       false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)
@@ -699,6 +708,7 @@ class ConfigSpec extends Specification {
         maxError = None,
         jdbcHost = None),
       Set(),
+      false,
       false)
 
     Cli.Loader.parse(args).value.unsafeRunSync() must beRight(expected)

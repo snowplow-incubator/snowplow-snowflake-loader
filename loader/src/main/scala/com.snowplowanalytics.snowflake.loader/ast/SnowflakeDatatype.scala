@@ -12,18 +12,63 @@
  */
 package com.snowplowanalytics.snowflake.loader.ast
 
-sealed trait SnowflakeDatatype
+import cats.syntax.either._
+
+sealed trait SnowflakeDatatype extends Product with Serializable
 
 object SnowflakeDatatype {
-  case class Varchar(size: Option[Int]) extends SnowflakeDatatype
-  case object Timestamp extends SnowflakeDatatype
-  case class Char(size: Int) extends SnowflakeDatatype
-  case object SmallInt extends SnowflakeDatatype
-  case object DoublePrecision extends SnowflakeDatatype
-  case object Integer extends SnowflakeDatatype
-  case class Number(precision: Int, scale: Int) extends SnowflakeDatatype
-  case object Boolean extends SnowflakeDatatype
-  case object Variant extends SnowflakeDatatype
-  case object JsonObject extends SnowflakeDatatype
-  case object JsonArray extends SnowflakeDatatype
+  final case class Varchar(size: Option[Int]) extends SnowflakeDatatype
+  final case object Timestamp extends SnowflakeDatatype
+  final case class Char(size: Int) extends SnowflakeDatatype
+  final case object SmallInt extends SnowflakeDatatype
+  final case object DoublePrecision extends SnowflakeDatatype
+  final case object Integer extends SnowflakeDatatype
+  final case class Number(precision: Int, scale: Int) extends SnowflakeDatatype
+  final case object Boolean extends SnowflakeDatatype
+  final case object Variant extends SnowflakeDatatype
+  final case object JsonObject extends SnowflakeDatatype
+  final case object JsonArray extends SnowflakeDatatype
+
+  private val varcharRegex = """VARCHAR\((\d+)\)""".r
+  private val charRegex = """CHAR\((\d+)\)""".r
+  private val timestampRegex = """TIMESTAMP_NTZ\((\d+)\)""".r
+  private val numberRegex = """NUMBER\((\d+),(\d+)\)""".r
+
+  def parse(s: String): Either[String, SnowflakeDatatype] =
+    s match {
+      case varcharRegex(size) =>
+        Either.catchOnly[NumberFormatException](size.toInt)
+          .leftMap(_.getMessage)
+          .map(size => Varchar(Some(size)))
+      case charRegex(size) =>
+        Either.catchOnly[NumberFormatException](size.toInt)
+          .leftMap(_.getMessage)
+          .map(size => Varchar(Some(size)))
+      case "VARCHAR" =>
+        Varchar(None).asRight
+      case "CHAR(1)" =>
+          Char(1).asRight
+      case timestampRegex(_) =>
+        Timestamp.asRight
+      case numberRegex("38", "0") | "INTEGER" | "INT" =>
+        Integer.asRight
+      case numberRegex(precision, scale) =>
+        for {
+          precision <- Either.catchOnly[NumberFormatException](precision.toInt).leftMap(_.getMessage)
+          scale <- Either.catchOnly[NumberFormatException](scale.toInt).leftMap(_.getMessage)
+        } yield Number(precision, scale)
+      case "FLOAT" | "DOUBLE PRECISION" | "DOUBLE" | "REAL" =>
+        DoublePrecision.asRight
+      case "BOOLEAN" =>
+        Boolean.asRight
+      case "ARRAY" =>
+        JsonArray.asRight
+      case "OBJECT" =>
+        JsonObject.asRight
+      case "VARIANT" =>
+        Variant.asRight
+      case "SMALLINT" =>  // Represented as NUMBER(38,0)
+        SmallInt.asRight
+      case _ => s"Unknown type $s".asLeft
+    }
 }

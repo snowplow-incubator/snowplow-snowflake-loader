@@ -10,14 +10,15 @@
  * "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
  * See the Apache License Version 2.0 for the specific language governing permissions and limitations there under.
  */
-package com.snowplowanalytics.snowflake.loader
-package connection
+package com.snowplowanalytics.snowflake.loader.connection
+
+import cats.syntax.either._
 
 import cats.effect.{ Sync, IO }
 import cats.effect.concurrent.Ref
 
-import ast._
 import com.snowplowanalytics.snowflake.core.Config
+import com.snowplowanalytics.snowflake.loader.ast._
 
 object DryRun {
 
@@ -66,6 +67,9 @@ object DryRun {
     def executeAndReturnResult[S: Statement](connection: Database.Connection, ast: S): IO[List[Map[String, Object]]] =
       run[List[Map[String, Object]]](connection)(conn => log(conn, ast).as(List.empty[Map[String, Object]]))
 
+    def describeTable(connection: Database.Connection, schema: String, table: String): IO[List[Either[String, Column]]] =
+      run[List[Either[String, Column]]](connection)(conn => log(conn, DescribeTable(schema, table)).as(AtomicDef.columns.map(_.asRight)))
+
     private def run[A](connection: Database.Connection)(f: Connection => IO[A]): IO[A] =
       connection match {
         case Database.Connection.Dry(conn) => f(conn)
@@ -77,14 +81,12 @@ object DryRun {
   private def log[S: Statement](state: Connection, statement: S) =
     state.update { s =>
       val updated = statement.getStatement.value :: s.messages
-      // System.out.println(message)
       s.copy(messages = updated)
     }
 
   private def log(state: Connection, message: String) =
     state.update { s =>
       val updated = message :: s.messages
-      System.out.println(s"OO $message")
       s.copy(messages = updated)
     }
 

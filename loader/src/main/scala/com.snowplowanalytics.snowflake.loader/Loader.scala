@@ -65,18 +65,20 @@ object Loader {
     * @param config Snowflake JSON configuration
     * @return application exit code based [[Error]]
     */
-  def run[F[_]: Sync: Database: ProcessManifest](connection: Database.Connection, config: Config): F[ExitCode] = {
+  def run[F[_]: Sync: Database: ProcessManifest: Logger](connection: Database.Connection, config: Config): F[ExitCode] = {
     def initWarehouse: F[Unit] =
       Database[F].execute(connection, UseWarehouse(config.warehouse)) *> {
         Database[F].execute(connection, AlterWarehouse.Resume(config.warehouse)) *>
-          Sync[F].delay(println(s"Warehouse ${config.warehouse} resumed"))
+          Logger[F].info(s"Warehouse ${config.warehouse} resumed")
       } recoverWith {
         case _: net.snowflake.client.jdbc.SnowflakeSQLException =>
-          Sync[F].delay(println(s"Warehouse ${config.warehouse} already resumed"))
+          Logger[F].info(s"Warehouse ${config.warehouse} already resumed")
       }
 
     val action: Action[F, Unit] = for {
       _ <- preliminaryChecks(connection, config)
+      warnings <- Database.checkState[F](connection, config.schema, Defaults.Table).toAction
+      _ <- warnings.traverse_(w => Logger[F].info(w)).toAction
       runIds = ProcessManifest[F].scan(config.manifest)
       state <- SnowflakeState.getState[F](runIds).toAction
       _ <- EitherT.fromEither[F](checkFoldersStage(state.foldersToLoad, config.stageUrl))
@@ -86,11 +88,11 @@ object Loader {
 
     action.value.flatMap {
       case Right(_) =>
-        Sync[F].delay(System.out.println("Success. Exiting...")).as(ExitCode.Success)
+        Logger[F].info("Success. Exiting...").as(ExitCode.Success)
       case Left(Error.NothingToLoad) =>
-        Sync[F].delay(System.out.println("Nothing to load. Exiting...")).as(ExitCode.Success)
+        Logger[F].info("Nothing to load. Exiting...").as(ExitCode.Success)
       case Left(error) =>
-        Sync[F].delay(System.err.println(error.show)).as(ExitCode.Error)
+        Logger[F].error(error).as(ExitCode.Error)
     }
   }
 
@@ -100,7 +102,7 @@ object Loader {
     * @param config load configuration
     * @param folder run id, extracted from manifest; processed, but not yet loaded
     */
-  def loadFolder[F[_]: Database: ProcessManifest: Sync: ThrowingM]
+  def loadFolder[F[_]: Database: ProcessManifest: Sync: ThrowingM: Logger]
                 (connection: Database.Connection, config: Config)
                 (folder: SnowflakeState.FolderToLoad): Action[F, Unit] = {
     val runId = folder.folderToLoad.runIdFolder
@@ -111,16 +113,19 @@ object Loader {
       loadStatement <- EitherT.fromEither[F](getInsertStatement(config, folder.folderToLoad))
       _ <- Database[F].startTransaction(connection, Some(transactionName)).toAction
       columns <- EitherT(addColumns[F](connection, config.schema, folder))
-      _ <- Sync[F].delay { if (columns.isEmpty)
-        System.out.println("No new columns added")
-      else
-        System.out.println(s"Following columns added: ${columns.mkString(", ")}")
-      }.toAction
+      _ <- Sync[F].ifM(Sync[F].pure(columns.isEmpty))(
+        Logger[F].debug("No new columns added"),
+        Logger[F].info(show"Following columns added: ${columns.mkString(", ")}")
+      ).toAction
+      _ <- Logger[F].info(show"Loading $runId into temporary table").toAction
       _ <- loadTempTable[F](connection, config, tempTable, runId).toAction
+      _ <- Logger[F].info(show"Temporary table has been created and loaded. Copying into [${loadStatement.destination}]").toAction
+      _ <- Logger[F].debug(loadStatement.getStatement.value).toAction
       _ <- Database[F].execute(connection, loadStatement).toAction
-      _ <- Sync[F].delay(println(s"Folder [$runId] from stage [${config.stage}] has been loaded")).toAction
+      _ <- Logger[F].info(show"Folder [$runId] from stage [${config.stage}] has been loaded").toAction
       _ <- ProcessManifest[F].markLoaded(config.manifest, folder.folderToLoad.runId).toAction
       _ <- Database[F].commitTransaction(connection).toAction
+      _ <- Logger[F].info("Marked as loaded and transaction commited. Done").toAction
     } yield ()
 
     action.recoverWith { case e => EitherT(Database[F].rollbackTransaction(connection).as(e.asLeft)) }
@@ -229,13 +234,13 @@ object Loader {
     * @param tempTableCreateStatement SQL statement AST
     * @param runId directory in stage, where files reside
     */
-  def loadTempTable[F[_]: Apply: Database](connection: Database.Connection,
-                                           config: Config,
-                                           tempTableCreateStatement: CreateTable,
-                                           runId: String): F[Unit] = {
+  def loadTempTable[F[_]: Apply: Database: Logger](connection: Database.Connection,
+                                                   config: Config,
+                                                   tempTableCreateStatement: CreateTable,
+                                                   runId: String): F[Unit] = {
     val credentials = PasswordService.getLoadCredentials(config.auth) match {
-      case Left(PasswordService.NoCredentials) => None
-      case Left(PasswordService.CredentialsFailure(error)) => throw new RuntimeException(error)
+      case Left(PasswordService.CredentialsStatus.NoCredentials) => None
+      case Left(PasswordService.CredentialsStatus.CredentialsFailure(error)) => throw new RuntimeException(error)
       case Right(creds) => Some(creds)
     }
 
@@ -249,7 +254,9 @@ object Loader {
       config.maxError.map(CopyInto.SkipFileNum),
       stripNullValues = true)
 
-    Database[F].execute(connection, tempTableCreateStatement) *>
+    Logger[F].debug(tempTableCreateStatement.getStatement.value) *>
+      Database[F].execute(connection, tempTableCreateStatement) *>
+      Logger[F].debug(tempTableCopyStatement.sanitized) *>
       Database[F].execute(connection, tempTableCopyStatement)
   }
 
