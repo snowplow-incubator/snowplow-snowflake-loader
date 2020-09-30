@@ -30,8 +30,10 @@ import ast.Auth
 object PasswordService {
 
   sealed trait CredentialsStatus
-  case object NoCredentials extends CredentialsStatus
-  case class CredentialsFailure(message: String) extends CredentialsStatus
+  object CredentialsStatus {
+    case object NoCredentials extends CredentialsStatus
+    case class CredentialsFailure(message: String) extends CredentialsStatus
+  }
 
   /**
    * Get credentials for `setup` subcommand
@@ -54,10 +56,10 @@ object PasswordService {
       case AuthMethod.RoleAuth(roleArn, sessionDuration) =>
         getCredentialsForRole(roleArn, sessionDuration).map { creds =>
           Auth.AwsKeys(creds.getAccessKeyId, creds.getSecretAccessKey, Option(creds.getSessionToken))
-        }.leftMap(e => CredentialsFailure(e))
+        }.leftMap(e => CredentialsStatus.CredentialsFailure(e))
       case AuthMethod.StorageIntegration(name) =>
         Auth.StorageIntegration(name).asRight
-      case AuthMethod.StageAuth => Left(NoCredentials)
+      case AuthMethod.StageAuth => Left(CredentialsStatus.NoCredentials)
     }
 
   /**
