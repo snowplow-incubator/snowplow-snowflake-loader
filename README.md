@@ -47,11 +47,11 @@ limitations under the License.
 
 [snowflake]: https://www.snowflake.com/
 
-[techdocs]: https://github.com/snowplow-incubator/snowplow-snowflake-loader/wiki/
+[techdocs]: https://docs.snowplowanalytics.com/docs/open-source-components-and-applications/snowplow-snowflake-loader/
 [techdocs-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/techdocs.png
 
-[setup]: https://github.com/snowplow-incubator/snowplow-snowflake-loader/wiki/Setup-Guide
+[setup]: https://docs.snowplowanalytics.com/docs/open-source-components-and-applications/snowplow-snowflake-loader/setup/
 [setup-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/setup.png
 
-[contributing]: https://github.com/snowplow-incubator/snowplow-snowflake-loader/wiki/
+[contributing]: https://github.com/snowplow/snowplow/blob/master/CONTRIBUTING.md
 [contributing-image]: https://d3i6fms1cm1j0i.cloudfront.net/github/images/contributing.png
