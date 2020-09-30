@@ -180,10 +180,11 @@ class LoaderSpec extends Specification {
 
       val expectedLoaded = List("enriched/good/run=2017-12-10-14-30-35")
 
+      val noopLogger = Logger.initNoop[IO]
       val test = for {
         connection <- Database[IO].getConnection(config)
         manifestState <- Ref.of[IO, ManifestState](LoaderSpec.ManifestState(Nil))
-        code <- Loader.run(connection, config)(Sync[IO], Database[IO], new ProcessingManifestTest(manifestState))
+        code <- Loader.run(connection, config)(Sync[IO], Database[IO], new ProcessingManifestTest(manifestState), noopLogger)
         messages <- connection match {
           case Database.Connection.Dry(state) => state.get.map(_.messages.reverse.filterNot(_.startsWith("INSERT INTO")))
           case _ => IO.raiseError(new RuntimeException("Unexpected connection type"))

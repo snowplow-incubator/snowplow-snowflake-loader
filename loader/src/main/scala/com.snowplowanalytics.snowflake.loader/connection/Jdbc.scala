@@ -13,12 +13,12 @@
 package com.snowplowanalytics.snowflake.loader
 package connection
 
-import java.sql.{ DriverManager, Connection }
-
+import java.sql.{Connection, DriverManager, ResultSet, SQLException}
 import java.util.Properties
 
 import scala.collection.mutable.ListBuffer
 
+import cats.syntax.either._
 import cats.effect.Sync
 
 import com.snowplowanalytics.snowflake.loader.ast._
@@ -165,11 +165,43 @@ object Jdbc {
         }
       }
 
+    def describeTable(connection: Database.Connection, schema: String, table: String): F[List[Either[String, Column]]] =
+      run(connection) { conn =>
+        Sync[F].delay {
+          val statement = conn.createStatement()
+          val rs = statement.executeQuery(DescribeTable(schema, table).getStatement.value)
+          val buffer = collection.mutable.ListBuffer.newBuilder[Either[String, Column]]
+          while (rs.next()) {
+            buffer += parseColumn(rs)
+          }
+          buffer.result().toList
+        }
+      }
+
     private def run[A](connection: Database.Connection)(f: Connection => F[A]): F[A] =
       connection match {
         case Database.Connection.Jdbc(conn) => f(conn)
         case Database.Connection.Dry(_) =>
           Sync[F].raiseError(new IllegalStateException("JDBC Database was called with DryRun connection"))
       }
+
+
+    def parseBoolean(s: String) =
+      s match {
+        case "Y" => true.asRight
+        case "N" => false.asRight
+        case _ => s"Cannot parse BOOLEAN. $s is not valid: Y or N expected".asLeft
+      }
+
+    def parseColumn(rs: ResultSet): Either[String, Column] =
+      for {
+        name <- Either.catchOnly[SQLException](rs.getString("name").toLowerCase).leftMap(_.getMessage)
+        columnTypeS <- Either.catchOnly[SQLException](rs.getString("type")).leftMap(_.getMessage)
+        columnType <- SnowflakeDatatype.parse(columnTypeS)
+        nullableS <- Either.catchOnly[SQLException](rs.getString("null?")).leftMap(_.getMessage)
+        nullable <- parseBoolean(nullableS)
+        uniqueS <- Either.catchOnly[SQLException](rs.getString("unique key")).leftMap(_.getMessage)
+        unique <- parseBoolean(uniqueS)
+      } yield Column(name, columnType, !nullable, unique)
   }
 }
