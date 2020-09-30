@@ -12,16 +12,4 @@
  */
 package com.snowplowanalytics.snowflake.loader.ast
 
-import cats.syntax.show._
-import cats.instances.string._
-
-sealed trait Insert {
-  def destination: String
-}
-
-object Insert {
-  case class InsertQuery(schema: String, table: String, columns: List[String], from: Select) extends Insert {
-    def destination: String = show"$schema.$table"
-  }
-}
-
+case class DescribeTable(schema: String, table: String)

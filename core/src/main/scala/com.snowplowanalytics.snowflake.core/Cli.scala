@@ -125,13 +125,13 @@ object Cli {
       def resolver: PathOrJson
     }
 
-    final case class LoadRaw(loaderConfig: PathOrJson, resolver: PathOrJson, dryRun: Boolean) extends RawCli
-    final case class SetupRaw(loaderConfig: PathOrJson, resolver: PathOrJson, skip: Set[SetupSteps], dryRun: Boolean) extends RawCli
-    final case class MigrateRaw(loaderConfig: PathOrJson, resolver: PathOrJson, loaderVersion: String, dryRun: Boolean) extends RawCli
+    final case class LoadRaw(loaderConfig: PathOrJson, resolver: PathOrJson, dryRun: Boolean, debug: Boolean) extends RawCli
+    final case class SetupRaw(loaderConfig: PathOrJson, resolver: PathOrJson, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean) extends RawCli
+    final case class MigrateRaw(loaderConfig: PathOrJson, resolver: PathOrJson, loaderVersion: String, dryRun: Boolean, debug: Boolean) extends RawCli
 
-    final case class Load(loaderConfig: Config, dryRun: Boolean) extends Loader
-    final case class Setup(loaderConfig: Config, skip: Set[SetupSteps], dryRun: Boolean) extends Loader
-    final case class Migrate(loaderConfig: Config, loaderVersion: String, dryRun: Boolean) extends Loader
+    final case class Load(loaderConfig: Config, dryRun: Boolean, debug: Boolean) extends Loader
+    final case class Setup(loaderConfig: Config, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean) extends Loader
+    final case class Migrate(loaderConfig: Config, loaderVersion: String, dryRun: Boolean, debug: Boolean) extends Loader
 
     def parse(args: Seq[String]) =
       loader
@@ -148,9 +148,9 @@ object Cli {
         _ <- igluClient.check(configData).leftMap(e => s"Iglu validation failed with following error\n: ${e.asJson.spaces2}")
         cfg <- configData.data.as[Config].toEitherT[IO].leftMap(e => s"Error while decoding configuration JSON, ${e.show}")
       } yield rawCli match {
-        case LoadRaw(_, _, dryRun) => Load(cfg, dryRun)
-        case SetupRaw(_, _, skip, dryRun) => Setup(cfg, skip, dryRun)
-        case MigrateRaw(_, _, version, dryRun) => Migrate(cfg, version, dryRun)
+        case LoadRaw(_, _, dryRun, debug) => Load(cfg, dryRun, debug)
+        case SetupRaw(_, _, skip, dryRun, debug) => Setup(cfg, skip, dryRun, debug)
+        case MigrateRaw(_, _, version, dryRun, debug) => Migrate(cfg, version, dryRun, debug)
       }
   }
 
@@ -164,6 +164,7 @@ object Cli {
   }
 
   val dryRun = Opts.flag("dry-run", "Do not perform database actions, only print statements to stdout").orFalse
+  val debug = Opts.flag("debug", "Print additional information such as executed queries").orFalse
   val base64 = Opts.flag("base64", "Configuration passed as Base64-encoded string, not as file path").orFalse
   val version = Opts.option[String]("loader-version", s"Snowplow Snowflake Loader version to make the table compatible with")
   val steps = Opts.options[SetupSteps]("skip", s"Skip the setup step. Available steps: ${Config.SetupSteps.values}").orNone.map(_.toList.unite.toSet)
@@ -174,21 +175,21 @@ object Cli {
   val config = Opts.option[String]("config", "Snowflake Loader JSON config, FS path or base64-encoded")
   val configEncoded = Opts.option[Base64Encoded]("config", "Snowflake Loader JSON config, base64-encoded")
 
-  val setupOpt = (config, base64, steps, dryRun, resolver).tupled.mapValidated {
-    case (cfg, encoded, steps, dry, res) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.SetupRaw(c, r, steps, dry) }
+  val setupOpt = (config, base64, steps, dryRun, resolver, debug).tupled.mapValidated {
+    case (cfg, encoded, steps, dry, res, deb) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.SetupRaw(c, r, steps, dry, deb) }
   }
   val setup = Opts.subcommand(Command("setup", "Perform setup actions", true)(setupOpt))
 
-  val migrateOpt = (config, base64, version, dryRun, resolver).tupled.mapValidated {
-    case (cfg, encoded, version, dry, res) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.MigrateRaw(c, r, version, dry) }
+  val migrateOpt = (config, base64, version, dryRun, resolver, debug).tupled.mapValidated {
+    case (cfg, encoded, version, dry, res, deb) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.MigrateRaw(c, r, version, dry, deb) }
   }
   val migrate = Opts.subcommand(Command("migrate", "Load data into a warehouse", true)(migrateOpt))
 
-  val loadOpt = (config, base64, dryRun, resolver).tupled.mapValidated {
-    case (cfg, encoded, dry, res) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.LoadRaw(c, r, dry) }
+  val loadOpt = (config, base64, dryRun, resolver, debug).tupled.mapValidated {
+    case (cfg, encoded, dry, res, deb) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.LoadRaw(c, r, dry, deb) }
   }
   val load = Opts.subcommand(Command("load", "Load data into a warehouse", true)(loadOpt))
 

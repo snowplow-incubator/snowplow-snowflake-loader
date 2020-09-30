@@ -12,6 +12,8 @@
  */
 package com.snowplowanalytics.snowflake.loader.ast
 
+import cats.syntax.either._
+
 import com.snowplowanalytics.snowflake.loader.ast.CreateTable._
 import com.snowplowanalytics.snowflake.loader.ast.SnowflakeDatatype._
 
@@ -214,4 +216,27 @@ object AtomicDef {
   /** Get statement to create standard table with custom schema */
   def getTable(schema: String = Defaults.Schema): CreateTable =
     CreateTable(schema, Defaults.Table, columns, Some(PrimaryKeyConstraint("event_id_pk", "event_id")))
+
+  private val MissingExisting = s"Missing a column"
+  private val MissingAtomic = "Column missing in atomic definition"
+  private val Total = columns.length
+
+  def compare(columns: List[Either[String, Column]]): List[String] =
+    columns.zipAll(AtomicDef.columns.map(_.asRight), MissingExisting.asLeft, MissingAtomic.asLeft).zipWithIndex.flatMap { case ((existing, atomic), i) =>
+      val position = i + 1   // indexes are 0-based
+      (existing, atomic) match {
+        case (Right(e), Right(a)) if e == a =>   // Match
+          Nil
+        case (Right(e), Right(a)) =>             // Different
+          List(s"Existing column $e doesn't match expected definition $a at position $position")
+        case (Right(_), Left(MissingAtomic)) if position > Total =>  // New context or self-describing event
+          Nil
+        case (Left(MissingExisting), Right(a)) => // Warning
+          List(s"Expected column $a with $position position missing in the table")
+        case (Left(e), Left(MissingAtomic)) =>
+          List(s"Could not parse column with $position position. $e")
+        case (e, a) =>                            // Should be illegal state
+          List(s"Unexpected state at $position position. Expected $a, given $e")
+      }
+    }
 }
