@@ -80,7 +80,7 @@ class StatementSpec extends Specification {
 
     val result = input.getStatement.value
     val expected = "INSERT INTO not_atomic.events(one,two,three) " +
-      "SELECT orig_col:dest_column::VARIANT, orig_col:next::DOUBLE PRECISION, substr(orig_col:third::NUMBER(1,2),1,255) " +
+      "SELECT orig_col:dest_column::VARIANT, orig_col:next::DOUBLE PRECISION, substr(orig_col:third,1,255)::NUMBER(1,2) " +
       "FROM some_schema.tmp_table"
 
     result must beEqualTo(expected)

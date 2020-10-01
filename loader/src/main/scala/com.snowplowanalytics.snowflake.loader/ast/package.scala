@@ -52,10 +52,12 @@ package object ast {
 
   implicit object CastedColumnShow extends Show[Select.CastedColumn] {
     def show(column: Select.CastedColumn): String = {
-      val castedColumn = s"${column.originColumn}:${column.columnName}::${column.datatype.show}"
       column.substring match {
-        case Some(Substring(start, length)) => s"substr($castedColumn,$start,$length)"
-        case None => castedColumn
+        case Some(Substring(start, length)) =>
+          val columnName = s"${column.originColumn}:${column.columnName}"
+          s"substr($columnName,$start,$length)::${column.datatype.show}"
+        case None =>
+          s"${column.originColumn}:${column.columnName}::${column.datatype.show}"
       }
     }
   }
