@@ -35,9 +35,10 @@ class ConfigSpec extends Specification {
   Parse valid load configuration with EC2-stored password and Role ARN $e8
   Parse valid load without credentials $e9
   Parse valid base64-encoded events manifest configuration $e10
-  Parse valid configuration with optional params $e11
-  Parse valid configuration with set setup steps $e12
-  Fail to parse configuration with bad setup steps $e13
+  Parse valid configuration with StorageIntegration $e11
+  Parse valid configuration with optional params $e12
+  Parse valid configuration with set setup steps $e13
+  Fail to parse configuration with bad setup steps $e14
   """
 
   val configUrl = getClass.getResource("/valid-config.json")
@@ -345,6 +346,59 @@ class ConfigSpec extends Specification {
 
   def e11 = {
     val args = List(
+      "--inbatch-deduplication",
+      "--resolver", resolverBase64,
+      // Using iglu:com.snowplowanalytics.snowplow.storage/snowflake_config/jsonschema/1-0-3 and StorageIntegration
+      "--config", "eyAic2NoZW1hIjogImlnbHU6Y29tLnNub3dwbG93YW5hbHl0aWNzLnNub3dwbG93LnN0b3JhZ2Uvc25vd2ZsYWtlX2NvbmZpZy9qc29uc2NoZW1hLzEtMC0zIiwgImRhdGEiOiB7ICJuYW1lIjogIlNub3dmbGFrZSBiYXNlNjQiLCAiYXV0aCI6IHsgImludGVncmF0aW9uTmFtZSI6ICJTTk9XUExPV19DT01fU05QTE9XX0VOR19BV1NfREVWMV9TM19JTlRFR1JBVElPTiIgfSwgImF3c1JlZ2lvbiI6ICJ1cy1lYXN0LTEiLCAibWFuaWZlc3QiOiAic25vd2ZsYWtlLW1hbmlmZXN0IiwgInNub3dmbGFrZVJlZ2lvbiI6ICJ1cy13ZXN0LTEiLCAiZGF0YWJhc2UiOiAidGVzdF9kYiIsICJpbnB1dCI6ICJzMzovL3Nub3dmbGFrZS9pbnB1dC8iLCAic3RhZ2UiOiAic29tZV9zdGFnZSIsICJzdGFnZVVybCI6ICJzMzovL3Nub3dmbGFrZS9vdXRwdXQvIiwgIndhcmVob3VzZSI6ICJzbm93cGxvd193aCIsICJzY2hlbWEiOiAiYXRvbWljIiwgImFjY291bnQiOiAic25vd3Bsb3ciLCAidXNlcm5hbWUiOiAiYW50b24iLCAicGFzc3dvcmQiOiAiU3VwZXJzZWNyZXQyIiwgInB1cnBvc2UiOiAiRU5SSUNIRURfRVZFTlRTIiB9IH0=",
+      "--events-manifest", "eyJzY2hlbWEiOiJpZ2x1OmNvbS5zbm93cGxvd2FuYWx5dGljcy5zbm93cGxvdy5zdG9yYWdlL2FtYXpvbl9keW5hbW9kYl9jb25maWcvanNvbnNjaGVtYS8yLTAtMCIsImRhdGEiOnsibmFtZSI6ImxvY2FsIiwiYXV0aCI6eyJhY2Nlc3NLZXlJZCI6ImZha2VBY2Nlc3NLZXlJZCIsInNlY3JldEFjY2Vzc0tleSI6ImZha2VTZWNyZXRBY2Nlc3NLZXkifSwiYXdzUmVnaW9uIjoidXMtd2VzdC0xIiwiZHluYW1vZGJUYWJsZSI6InNub3dwbG93LWludGVncmF0aW9uLXRlc3QtY3Jvc3NiYXRjaC1kZWR1cGUiLCJpZCI6IjU2Nzk5YTI2LTk4MGMtNDE0OC04YmQ5LWMwMjFiOTg4YzY2OSIsInB1cnBvc2UiOiJFVkVOVFNfTUFOSUZFU1QifX0=").toArray
+
+    val expected = CliTransformerConfiguration(
+      Config(
+        auth = Config.StorageIntegration,
+        awsRegion = "us-east-1",
+        manifest = "snowflake-manifest",
+        stage = "some_stage",
+        stageUrl = s3("s3://snowflake/output/"),
+        snowflakeRegion = "us-west-1",
+        schema = "atomic",
+        username = "anton",
+        password = Config.PlainText("Supersecret2"),
+        input = s3("s3://snowflake/input/"),
+        account = "snowplow",
+        warehouse = "snowplow_wh",
+        database = "test_db",
+        maxError = None,
+        jdbcHost = None),
+      Resolver(
+        cacheSize = 5,
+        repos = List(
+          HttpRepositoryRef(
+            config = RepositoryRefConfig(
+              name = "Iglu Central base64",
+              instancePriority = 0,
+              vendorPrefixes = List("com.snowplowanalytics")
+            ),
+            uri = "http://iglucentral.com",
+            apikey = None
+          ))
+      ),
+      Some(DynamoDbConfig(
+        name = "local",
+        auth = Some(DynamoDbConfig.CredentialsAuth(
+          accessKeyId = "fakeAccessKeyId",
+          secretAccessKey = "fakeSecretAccessKey")
+        ),
+        awsRegion = "us-west-1",
+        dynamodbTable = "snowplow-integration-test-crossbatch-dedupe"
+      )),
+      true
+    )
+
+    Config.parseTransformerCli(args) must beSome(Right(expected))
+  }
+
+  def e12 = {
+    val args = List(
       "load",
 
       "--dry-run",
@@ -381,7 +435,7 @@ class ConfigSpec extends Specification {
     Config.parseLoaderCli(args) must beSome(Right(expected))
   }
 
-  def e12 = {
+  def e13 = {
     val args = List(
       "setup",
 
@@ -419,7 +473,7 @@ class ConfigSpec extends Specification {
     Config.parseLoaderCli(args) must beSome(Right(expected))
   }
 
-  def e13 = {
+  def e14 = {
     val args = List(
       "setup",
 
