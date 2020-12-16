@@ -292,15 +292,13 @@ class ConfigSpec extends Specification {
     val args = List(
       "--inbatch-deduplication",
       "--resolver", resolverBase64,
-      "--config", "eyAic2NoZW1hIjogImlnbHU6Y29tLnNub3dwbG93YW5hbHl0aWNzLnNub3dwbG93LnN0b3JhZ2Uvc25vd2ZsYWtlX2NvbmZpZy9qc29uc2NoZW1hLzEtMC0wIiwgImRhdGEiOiB7ICJuYW1lIjogIlNub3dmbGFrZSBiYXNlNjQiLCAiYXV0aCI6IHsgImFjY2Vzc0tleUlkIjogIkFCQ0QiLCAic2VjcmV0QWNjZXNzS2V5IjogImFiY2QiIH0sICJhd3NSZWdpb24iOiAidXMtZWFzdC0xIiwgIm1hbmlmZXN0IjogInNub3dmbGFrZS1tYW5pZmVzdCIsICJzbm93Zmxha2VSZWdpb24iOiAidXMtd2VzdC0xIiwgImRhdGFiYXNlIjogInRlc3RfZGIiLCAiaW5wdXQiOiAiczM6Ly9zbm93Zmxha2UvaW5wdXQvIiwgInN0YWdlIjogInNvbWVfc3RhZ2UiLCAic3RhZ2VVcmwiOiAiczM6Ly9zbm93Zmxha2Uvb3V0cHV0LyIsICJ3YXJlaG91c2UiOiAic25vd3Bsb3dfd2giLCAic2NoZW1hIjogImF0b21pYyIsICJhY2NvdW50IjogInNub3dwbG93IiwgInVzZXJuYW1lIjogImFudG9uIiwgInBhc3N3b3JkIjogIlN1cGVyc2VjcmV0MiIsICJwdXJwb3NlIjogIkVOUklDSEVEX0VWRU5UUyIgfSB9",
+      // Using iglu:com.snowplowanalytics.snowplow.storage/snowflake_config/jsonschema/1-0-3 and StorageIntegration
+      "--config", "eyAic2NoZW1hIjogImlnbHU6Y29tLnNub3dwbG93YW5hbHl0aWNzLnNub3dwbG93LnN0b3JhZ2Uvc25vd2ZsYWtlX2NvbmZpZy9qc29uc2NoZW1hLzEtMC0zIiwgImRhdGEiOiB7ICJuYW1lIjogIlNub3dmbGFrZSBiYXNlNjQiLCAiYXV0aCI6IHsgImludGVncmF0aW9uTmFtZSI6ICJTTk9XUExPV19DT01fU05QTE9XX0VOR19BV1NfREVWMV9TM19JTlRFR1JBVElPTiIgfSwgImF3c1JlZ2lvbiI6ICJ1cy1lYXN0LTEiLCAibWFuaWZlc3QiOiAic25vd2ZsYWtlLW1hbmlmZXN0IiwgInNub3dmbGFrZVJlZ2lvbiI6ICJ1cy13ZXN0LTEiLCAiZGF0YWJhc2UiOiAidGVzdF9kYiIsICJpbnB1dCI6ICJzMzovL3Nub3dmbGFrZS9pbnB1dC8iLCAic3RhZ2UiOiAic29tZV9zdGFnZSIsICJzdGFnZVVybCI6ICJzMzovL3Nub3dmbGFrZS9vdXRwdXQvIiwgIndhcmVob3VzZSI6ICJzbm93cGxvd193aCIsICJzY2hlbWEiOiAiYXRvbWljIiwgImFjY291bnQiOiAic25vd3Bsb3ciLCAidXNlcm5hbWUiOiAiYW50b24iLCAicGFzc3dvcmQiOiAiU3VwZXJzZWNyZXQyIiwgInB1cnBvc2UiOiAiRU5SSUNIRURfRVZFTlRTIiB9IH0=",
       "--events-manifest", "eyJzY2hlbWEiOiJpZ2x1OmNvbS5zbm93cGxvd2FuYWx5dGljcy5zbm93cGxvdy5zdG9yYWdlL2FtYXpvbl9keW5hbW9kYl9jb25maWcvanNvbnNjaGVtYS8yLTAtMCIsImRhdGEiOnsibmFtZSI6ImxvY2FsIiwiYXV0aCI6eyJhY2Nlc3NLZXlJZCI6ImZha2VBY2Nlc3NLZXlJZCIsInNlY3JldEFjY2Vzc0tleSI6ImZha2VTZWNyZXRBY2Nlc3NLZXkifSwiYXdzUmVnaW9uIjoidXMtd2VzdC0xIiwiZHluYW1vZGJUYWJsZSI6InNub3dwbG93LWludGVncmF0aW9uLXRlc3QtY3Jvc3NiYXRjaC1kZWR1cGUiLCJpZCI6IjU2Nzk5YTI2LTk4MGMtNDE0OC04YmQ5LWMwMjFiOTg4YzY2OSIsInB1cnBvc2UiOiJFVkVOVFNfTUFOSUZFU1QifX0=").toArray
 
     val expected = CliTransformerConfiguration(
       Config(
-        auth = Config.CredentialsAuth(
-          accessKeyId = "ABCD",
-          secretAccessKey = "abcd"
-        ),
+        auth = Config.StorageIntegration,
         awsRegion = "us-east-1",
         manifest = "snowflake-manifest",
         stage = "some_stage",
