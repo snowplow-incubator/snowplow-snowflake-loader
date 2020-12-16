@@ -83,6 +83,7 @@ object Config {
   case class RoleAuth(roleArn: String, sessionDuration: Int) extends AuthMethod
   case class CredentialsAuth(accessKeyId: String, secretAccessKey: String) extends AuthMethod
   case object StageAuth extends AuthMethod
+  case object StorageIntegration extends AuthMethod // the integration name is irrelevant, as we simply want not to fail on this setting
 
   /** Reference to encrypted entity inside EC2 Parameter Store */
   case class ParameterStoreConfig(parameterName: String)
@@ -122,7 +123,11 @@ object Config {
         JInt(duration) <- fields.find(_._1 == "sessionDuration").map(_._2)
       } yield RoleAuth(roleArn, duration.toInt)
 
-      credentials.orElse(role).getOrElse(throw new MappingException("Cannot extract either RoleAuth or CredentialsAuth from auth"))
+      val storageIntegration = for {
+        JString(integrationName) <- fields.find(_._1 == "integrationName").map(_._2)
+      } yield StorageIntegration
+
+      credentials.orElse(role).orElse(storageIntegration).getOrElse(throw new MappingException("Cannot extract either RoleAuth or CredentialsAuth from auth"))
     case JNull => StageAuth
     case _ => throw new MappingException("Cannot extract AuthMethod from non-object")
 
