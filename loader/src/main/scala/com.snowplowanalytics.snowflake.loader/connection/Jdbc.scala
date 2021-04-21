@@ -13,6 +13,7 @@
 package com.snowplowanalytics.snowflake.loader
 package connection
 
+import java.net.URLEncoder
 import java.sql.{Connection, DriverManager, ResultSet, SQLException}
 import java.util.Properties
 
@@ -23,7 +24,6 @@ import cats.effect.Sync
 
 import com.snowplowanalytics.snowflake.loader.ast._
 import com.snowplowanalytics.snowflake.core.Config
-import com.snowplowanalytics.snowflake.generated.ProjectMetadata
 
 object Jdbc {
 
@@ -65,15 +65,13 @@ object Jdbc {
           }
       }
 
-      val userAgent = ProjectMetadata.name + "/" + ProjectMetadata.version
-
       properties.put("user", config.username)
       properties.put("password", password)
       properties.put("account", config.account)
       properties.put("warehouse", config.warehouse)
       properties.put("db", config.database)
       properties.put("schema", config.schema)
-      properties.put("userAgent", userAgent)
+      properties.put("application", URLEncoder.encode("Snowplow (OSS)", "UTF-8"))
 
       val connectStr = s"jdbc:snowflake://$host"
       Database.Connection.Jdbc(DriverManager.getConnection(connectStr, properties))
