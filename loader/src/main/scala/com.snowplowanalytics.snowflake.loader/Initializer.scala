@@ -25,12 +25,12 @@ import com.snowplowanalytics.snowflake.loader.connection.Database
 object Initializer {
 
   /** Run setup process */
-  def run[F[_]: Sync: Database](config: Config, skip: Set[SetupSteps]): F[ExitCode] = {
+  def run[F[_]: Sync: Database](config: Config, skip: Set[SetupSteps], appName: String): F[ExitCode] = {
     def execute[S: Statement](connection: Database.Connection, step: SetupSteps, statement: S): F[Unit] =
       if (!skip.contains(step)) Database[F].executeAndOutput(connection, statement) else Sync[F].unit
 
     for {
-      connection <- Database[F].getConnection(config)
+      connection <- Database[F].getConnection(config, appName)
       credentials = PasswordService.getSetupCredentials(config.auth)
       _ <- execute(connection, SetupSteps.Schema, CreateSchema(config.schema))
       _ <- execute(connection, SetupSteps.Table, AtomicDef.getTable(config.schema))

@@ -161,6 +161,8 @@ class LoaderSpec extends Specification {
         None,
         None)
 
+      val appName = "Snowplow_OSS"
+
       import LoaderSpec._
 
       val expectedSql = List(
@@ -182,7 +184,7 @@ class LoaderSpec extends Specification {
 
       val noopLogger = Logger.initNoop[IO]
       val test = for {
-        connection <- Database[IO].getConnection(config)
+        connection <- Database[IO].getConnection(config, appName)
         manifestState <- Ref.of[IO, ManifestState](LoaderSpec.ManifestState(Nil))
         code <- Loader.run(connection, config)(Sync[IO], Database[IO], new ProcessingManifestTest(manifestState), noopLogger)
         messages <- connection match {

@@ -26,14 +26,14 @@ import com.snowplowanalytics.snowflake.loader.ast.AlterTable.AlterColumnDatatype
 object Migrator {
 
   /** Run migration process */
-  def run[F[_]: Sync: Database: Logger](config: Config, loaderVersion: String): F[ExitCode] = {
+  def run[F[_]: Sync: Database: Logger](config: Config, loaderVersion: String, appName: String): F[ExitCode] = {
     def alterColumn(connection: Database.Connection, column: String, columnType: SnowflakeDatatype): F[Unit] =
       Database[F].executeAndOutput(connection, AlterColumnDatatype(config.schema, Defaults.Table, column, columnType))
 
     loaderVersion match {
       case "0.4.0" =>
         for {
-          connection <- Database[F].getConnection(config)
+          connection <- Database[F].getConnection(config, appName)
           _ <- alterColumn(connection, "user_ipaddress", SnowflakeDatatype.Varchar(Some(128)))
           _ <- alterColumn(connection, "user_fingerprint", SnowflakeDatatype.Varchar(Some(128)))
           _ <- alterColumn(connection, "domain_userid", SnowflakeDatatype.Varchar(Some(128)))

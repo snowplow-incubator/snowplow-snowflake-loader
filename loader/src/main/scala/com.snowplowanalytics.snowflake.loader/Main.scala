@@ -22,7 +22,7 @@ import com.snowplowanalytics.snowflake.loader.connection.Database
 object Main extends IOApp {
   def run(args: List[String]): IO[ExitCode] =
     Cli.Loader.parse(args).value.flatMap {
-      case Right(Cli.Loader.Load(config, dryRun, debug)) =>
+      case Right(Cli.Loader.Load(config, dryRun, debug, appName)) =>
         implicit val logger: Logger[IO] = Logger.initLogger[IO](debug)
         val database = Database.init(dryRun)
         for {
@@ -30,18 +30,18 @@ object Main extends IOApp {
           state <- ProcessManifest.initState[IO](config.awsRegion)
           _ <- Logger[IO].info("State fetched, acquiring DB connection")
           manifest = ProcessManifest.awsSyncProcessManifest[IO](state)
-          connection <- database.getConnection(config)
+          connection <- database.getConnection(config, appName)
           _ <- Logger[IO].info("DB connection acquired. Loading...")
           exit <- Loader.run[IO](connection, config)(Sync[IO], database, manifest, logger)
         } yield exit
-      case Right(Cli.Loader.Setup(config, skip, dryRun, debug)) =>
+      case Right(Cli.Loader.Setup(config, skip, dryRun, debug, appName)) =>
         implicit val L: Logger[IO] = Logger.initLogger[IO](debug)
         implicit val D: Database[IO] = Database.init(dryRun)
-        Logger[IO].info("Setting up...") *> Initializer.run[IO](config, skip)
-      case Right(Cli.Loader.Migrate(config, version, dryRun, debug)) =>
+        Logger[IO].info("Setting up...") *> Initializer.run[IO](config, skip, appName)
+      case Right(Cli.Loader.Migrate(config, version, dryRun, debug, appName)) =>
         implicit val L: Logger[IO] = Logger.initLogger[IO](debug)
         implicit val D: Database[IO] = Database.init(dryRun)
-        Logger[IO].info("Migrating...") *> Migrator.run[IO](config, version)
+        Logger[IO].info("Migrating...") *> Migrator.run[IO](config, version, appName)
       case Left(error) =>
         IO.delay(System.err.println(error)).as(ExitCode.Error)
     }

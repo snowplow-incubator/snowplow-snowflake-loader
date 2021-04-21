@@ -40,7 +40,7 @@ object DryRun {
 
   /** Implementation that can be extended for unit tests */
   class Stub extends Database[IO] {
-    def getConnection(config: Config): IO[Database.Connection] =
+    def getConnection(config: Config, appName: String): IO[Database.Connection] =
       for {
         logConnection <- Ref.of[IO, ConnectionState](ConnectionState(Nil, None, 0))
         _ <- log(logConnection, s"Connected to ${config.database} database")
