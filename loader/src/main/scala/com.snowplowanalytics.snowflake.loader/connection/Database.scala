@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowflake.loader.connection.Database.Connection
 
 /** DB-connection adapter */
 trait Database[F[_]] {
-  def getConnection(config: Config): F[Connection]
+  def getConnection(config: Config, appName: String): F[Connection]
   def execute[S: Statement](connection: Connection, ast: S): F[Unit]
   def startTransaction(connection: Connection, name: Option[String]): F[Unit]
   def commitTransaction(connection: Connection): F[Unit]

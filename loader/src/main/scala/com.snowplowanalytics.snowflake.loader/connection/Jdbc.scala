@@ -23,12 +23,11 @@ import cats.effect.Sync
 
 import com.snowplowanalytics.snowflake.loader.ast._
 import com.snowplowanalytics.snowflake.core.Config
-import com.snowplowanalytics.snowflake.generated.ProjectMetadata
 
 object Jdbc {
 
   def init[F[_]: Sync]: Database[F] = new Database[F] {
-    def getConnection(config: Config): F[Database.Connection] = Sync[F].delay {
+    def getConnection(config: Config, appName: String): F[Database.Connection] = Sync[F].delay {
       Class.forName("net.snowflake.client.jdbc.SnowflakeDriver")
 
       /**
@@ -65,15 +64,13 @@ object Jdbc {
           }
       }
 
-      val userAgent = ProjectMetadata.name + "/" + ProjectMetadata.version
-
       properties.put("user", config.username)
       properties.put("password", password)
       properties.put("account", config.account)
       properties.put("warehouse", config.warehouse)
       properties.put("db", config.database)
       properties.put("schema", config.schema)
-      properties.put("userAgent", userAgent)
+      properties.put("application", appName)
 
       val connectStr = s"jdbc:snowflake://$host"
       Database.Connection.Jdbc(DriverManager.getConnection(connectStr, properties))

@@ -125,13 +125,13 @@ object Cli {
       def resolver: PathOrJson
     }
 
-    final case class LoadRaw(loaderConfig: PathOrJson, resolver: PathOrJson, dryRun: Boolean, debug: Boolean) extends RawCli
-    final case class SetupRaw(loaderConfig: PathOrJson, resolver: PathOrJson, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean) extends RawCli
-    final case class MigrateRaw(loaderConfig: PathOrJson, resolver: PathOrJson, loaderVersion: String, dryRun: Boolean, debug: Boolean) extends RawCli
+    final case class LoadRaw(loaderConfig: PathOrJson, resolver: PathOrJson, dryRun: Boolean, debug: Boolean, appName: String) extends RawCli
+    final case class SetupRaw(loaderConfig: PathOrJson, resolver: PathOrJson, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean, appName: String) extends RawCli
+    final case class MigrateRaw(loaderConfig: PathOrJson, resolver: PathOrJson, loaderVersion: String, dryRun: Boolean, debug: Boolean, appName: String) extends RawCli
 
-    final case class Load(loaderConfig: Config, dryRun: Boolean, debug: Boolean) extends Loader
-    final case class Setup(loaderConfig: Config, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean) extends Loader
-    final case class Migrate(loaderConfig: Config, loaderVersion: String, dryRun: Boolean, debug: Boolean) extends Loader
+    final case class Load(loaderConfig: Config, dryRun: Boolean, debug: Boolean, appName: String = "Snowplow_OSS") extends Loader
+    final case class Setup(loaderConfig: Config, skip: Set[SetupSteps], dryRun: Boolean, debug: Boolean, appName: String = "Snowplow_OSS") extends Loader
+    final case class Migrate(loaderConfig: Config, loaderVersion: String, dryRun: Boolean, debug: Boolean, appName: String = "Snowplow_OSS") extends Loader
 
     def parse(args: Seq[String]) =
       loader
@@ -148,9 +148,9 @@ object Cli {
         _ <- igluClient.check(configData).leftMap(e => s"Iglu validation failed with following error\n: ${e.asJson.spaces2}")
         cfg <- configData.data.as[Config].toEitherT[IO].leftMap(e => s"Error while decoding configuration JSON, ${e.show}")
       } yield rawCli match {
-        case LoadRaw(_, _, dryRun, debug) => Load(cfg, dryRun, debug)
-        case SetupRaw(_, _, skip, dryRun, debug) => Setup(cfg, skip, dryRun, debug)
-        case MigrateRaw(_, _, version, dryRun, debug) => Migrate(cfg, version, dryRun, debug)
+        case LoadRaw(_, _, dryRun, debug, appName) => Load(cfg, dryRun, debug, appName)
+        case SetupRaw(_, _, skip, dryRun, debug, appName) => Setup(cfg, skip, dryRun, debug, appName)
+        case MigrateRaw(_, _, version, dryRun, debug, appName) => Migrate(cfg, version, dryRun, debug, appName)
       }
   }
 
@@ -175,21 +175,23 @@ object Cli {
   val config = Opts.option[String]("config", "Snowflake Loader JSON config, FS path or base64-encoded")
   val configEncoded = Opts.option[Base64Encoded]("config", "Snowflake Loader JSON config, base64-encoded")
 
-  val setupOpt = (config, base64, steps, dryRun, resolver, debug).tupled.mapValidated {
-    case (cfg, encoded, steps, dry, res, deb) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.SetupRaw(c, r, steps, dry, deb) }
+  val appName = Opts.option[String]("app-name", "The value of the application property in the JDBC connection, used by Snowflake").withDefault("Snowplow_OSS")
+
+  val setupOpt = (config, base64, steps, dryRun, resolver, debug, appName).tupled.mapValidated {
+    case (cfg, encoded, steps, dry, res, deb, appN) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.SetupRaw(c, r, steps, dry, deb, appN) }
   }
   val setup = Opts.subcommand(Command("setup", "Perform setup actions", true)(setupOpt))
 
-  val migrateOpt = (config, base64, version, dryRun, resolver, debug).tupled.mapValidated {
-    case (cfg, encoded, version, dry, res, deb) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.MigrateRaw(c, r, version, dry, deb) }
+  val migrateOpt = (config, base64, version, dryRun, resolver, debug, appName).tupled.mapValidated {
+    case (cfg, encoded, version, dry, res, deb, appN) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.MigrateRaw(c, r, version, dry, deb, appN) }
   }
   val migrate = Opts.subcommand(Command("migrate", "Load data into a warehouse", true)(migrateOpt))
 
-  val loadOpt = (config, base64, dryRun, resolver, debug).tupled.mapValidated {
-    case (cfg, encoded, dry, res, deb) =>
-      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.LoadRaw(c, r, dry, deb) }
+  val loadOpt = (config, base64, dryRun, resolver, debug, appName).tupled.mapValidated {
+    case (cfg, encoded, dry, res, deb, appN) =>
+      (PathOrJson.parse(cfg, encoded), PathOrJson.parse(res, encoded)).mapN { (c, r) => Loader.LoadRaw(c, r, dry, deb, appN) }
   }
   val load = Opts.subcommand(Command("load", "Load data into a warehouse", true)(loadOpt))
 
