@@ -1,0 +1,29 @@
+name: test
+
+on: push
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    env:
+      AWS_ACCESS_KEY: ${{ secrets.AWS_ACCESS_KEY }}
+      AWS_SECRET_KEY: ${{ secrets.AWS_SECRET_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Cache
+        uses: coursier/cache-action@v3
+
+      - name: Set up JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 8
+
+      - name: Run tests
+        run: |
+          sbt "project core" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
+          sbt "project transformer" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
+          sbt "project loader" clean startDynamodbLocal test dynamodbLocalTestCleanup stopDynamodbLocal
