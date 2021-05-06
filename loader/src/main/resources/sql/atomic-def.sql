@@ -81,7 +81,7 @@ CREATE TABLE IF NOT EXISTS atomic.events (
       -- Custom structured event
       se_category                 VARCHAR(1000),
       se_action                   VARCHAR(1000),
-      se_label                    VARCHAR(1000),
+      se_label                    VARCHAR(4096),
       se_property                 VARCHAR(1000),
       se_value                    DOUBLE PRECISION,
       -- Ecommerce
