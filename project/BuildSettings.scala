@@ -61,6 +61,7 @@ object BuildSettings {
 
   // sbt-assembly settings
   lazy val assemblySettings = Seq(
+    target in assembly := file("target/scala-2.12/assembled_jars/"),
     assemblyJarName in assembly := { moduleName.value + "-" + version.value + ".jar" },
 
     assemblyShadeRules in assembly := Seq(
