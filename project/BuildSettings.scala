@@ -27,7 +27,7 @@ import com.eed3si9n.jarjarabrams.ShadeRule
 object BuildSettings {
 
   lazy val buildSettings = Seq[Setting[_]](
-    version := "0.8.0",
+    version := "0.8.1-rc1",
     organization := "com.snowplowanalytics",
     scalaVersion := "2.12.12",
     resolvers ++= Seq(
