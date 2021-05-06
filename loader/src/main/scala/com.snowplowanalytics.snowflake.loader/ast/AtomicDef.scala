@@ -102,7 +102,7 @@ object AtomicDef {
     // Custom structured event
     Column("se_category", Varchar(Some(1000))),
     Column("se_action", Varchar(Some(1000))),
-    Column("se_label", Varchar(Some(1000))),
+    Column("se_label", Varchar(Some(4096))),
     Column("se_property", Varchar(Some(1000))),
     Column("se_value", DoublePrecision),
 
