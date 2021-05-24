@@ -220,3 +220,16 @@ jobs:
           AWS_REGION: ap-northeast-2
           SOURCE_DIR: ${{ steps.vars.outputs.source_dir }}
           DEST_DIR: ${{ steps.vars.outputs.dest_dir }}
+
+      - name: Create GitHub release and attach artifacts
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          prerelease: true
+          name: ${{ steps.ver.outputs.project_version }}
+          tag_name: ${{ steps.ver.outputs.project_version }}
+          files: |
+            target/scala-2.12/assembled_jars/snowplow-snowflake-loader-${{ steps.ver.outputs.project_version }}.jar
+            target/scala-2.12/assembled_jars/snowplow-snowflake-transformer-${{ steps.ver.outputs.project_version }}.jar
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
