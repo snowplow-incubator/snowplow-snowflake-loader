@@ -15,33 +15,26 @@
 package com.snowplowanalytics.snowflake.transformer
 
 import java.io.{BufferedWriter, File, FileWriter, IOException}
-
 import scala.collection.JavaConverters._
 import scala.io.Source
 import scala.util.Random
-
 import org.apache.commons.io.FileUtils
 import org.apache.commons.io.filefilter.TrueFileFilter
 import org.apache.commons.io.filefilter.IOFileFilter
-
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.SparkSession
 import org.apache.spark.serializer.KryoSerializer
-
+import cats.Id
 import cats.syntax.option._
 import cats.syntax.either._
-
 import io.circe.Json
 import io.circe.optics.JsonPath._
-
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.Schema
 import com.snowplowanalytics.iglu.schemaddl.jsonschema.circe.implicits._
 import com.snowplowanalytics.iglu.client.Resolver
-
 import com.snowplowanalytics.snowflake.core.{Cli, idClock}
 import com.snowplowanalytics.snowflake.transformer.TransformerJobConfig.FSConfig
 import com.snowplowanalytics.snowplow.eventsmanifest.EventsManifestConfig
-
 import org.specs2.mutable.Specification
 import org.specs2.matcher.Matcher
 import org.specs2.matcher.Matchers._
@@ -182,7 +175,7 @@ object TransformerJobSpec {
   val resolver = Cli
     .Base64Encoded
     .parse(resolverBase64)
-    .flatMap(r => Resolver.parse(r.json).leftMap(_.toString))
+    .flatMap(r => Resolver.parse[Id](r.json).leftMap(_.toString))
     .valueOr(e => throw new RuntimeException(s"Cannot parse test Iglu Resolver $e"))
 
   // Get Atomic schema from Iglu
