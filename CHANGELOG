@@ -1,3 +1,21 @@
+Version 0.8.1 (2021-06-25)
+--------------------------
+Use non-AWS endpoints in host inference (#131)
+Rename the userAgent JDBC connection property to application (#132)
+Extend se_label to 4096 characters (#134)
+Migrate from Travis to Github Actions (#135)
+Attach jar files to Github releases (#136)
+Bump circe to 0.14.1 (#143)
+Bump decline to 1.4.0 (#139)
+Bump enumeratum to 1.7.0 (#141)
+Bump fs2-core to 2.5.6 (#138)
+Bump jackson-databind to 2.9.10.7 (#144)
+Bump scalacheck to 1.15.4 (#146)
+Bump snowflake-jdbc to 3.13.5 (#147)
+Bump specs2 to 4.12.0 (#145)
+Bump snowplow-scala-analytics-sdk to 2.1.0 (#140)
+Bump schema-ddl to 0.13.0 (#142)
+
 Version 0.8.0 (2020-10-06)
 --------------------------
 Truncate long VARCHAR fields before casting (#126)
