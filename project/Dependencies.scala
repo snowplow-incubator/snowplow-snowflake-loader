@@ -33,7 +33,7 @@ object Dependencies {
     val jackson          = "2.9.10.7"
     // Scala (test only)
     val specs2           = "4.12.0"
-    val scalacheck       = "1.14.1"
+    val scalacheck       = "1.15.4"
   }
 
   // Java
