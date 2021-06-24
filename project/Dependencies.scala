@@ -32,7 +32,7 @@ object Dependencies {
     val circe            = "0.14.1"
     val jackson          = "2.9.10.7"
     // Scala (test only)
-    val specs2           = "4.6.0"
+    val specs2           = "4.12.0"
     val scalacheck       = "1.14.1"
   }
 
