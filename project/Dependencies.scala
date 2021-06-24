@@ -23,7 +23,7 @@ object Dependencies {
     val spark            = "3.0.0"
     val fs2              = "2.5.6"
     val decline          = "1.4.0"
-    val analyticsSdk     = "2.0.1"
+    val analyticsSdk     = "2.1.0"
     val enumeratum       = "1.5.13"
     val igluClient       = "1.0.2"
     val eventsManifest   = "0.3.0"
