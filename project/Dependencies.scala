@@ -21,7 +21,7 @@ object Dependencies {
     val aws              = "1.11.870"
     // Scala
     val spark            = "3.0.0"
-    val fs2              = "2.4.4"
+    val fs2              = "2.5.6"
     val decline          = "1.0.0"
     val analyticsSdk     = "2.0.1"
     val enumeratum       = "1.5.13"
