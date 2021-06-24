@@ -29,7 +29,7 @@ object Dependencies {
     val eventsManifest   = "0.3.0"
     val badRows          = "2.1.0"
     val schemaDdl        = "0.13.0"
-    val circe            = "0.13.0"
+    val circe            = "0.14.1"
     val jackson          = "2.9.10.6"
     // Scala (test only)
     val specs2           = "4.6.0"
