@@ -30,11 +30,14 @@ object Jdbc {
     def getConnection(config: Config, appName: String): F[Database.Connection] = Sync[F].delay {
       Class.forName("net.snowflake.client.jdbc.SnowflakeDriver")
 
-      /**
-       * A list of AWS region names that Snowflake connection string don't have `aws` subdomain for
-       * See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
-       */
-      val regionsWithoutAwsSubdomain = List("us-east-1", "eu-west-1", "eu-central-1", "ap-southeast-1", "ap-southeast-2")
+      // See https://docs.snowflake.com/en/user-guide/jdbc-configure.html#connection-parameters
+      val AwsUsWest2Region = "us-west-2"
+      // A list of AWS region names for which the Snowflake account name doesn't have the `aws` segment
+      val AwsRegionsWithoutSegment = List("us-east-1", "eu-west-1", "eu-central-1", "ap-southeast-1", "ap-southeast-2")
+      // A list of AWS region names for which the Snowflake account name requires the `aws` segment
+      val AwsRegionsWithSegment = List("us-east-2", "us-east-1-gov", "ca-central-1", "eu-west-2", "ap-northeast-1", "ap-south-1")
+      val GcpRegions = List("us-central1", "europe-west2", "europe-west4")
+      //val AzureRegions = List("west-us-2", "central-us", "east-us-2", "us-gov-virginia", "canada-central", "west-europe", "switzerland-north", "southeast-asia", "australia-east")
 
       /**
        * Host corresponds to Snowflake full account name which might include cloud platform and region
@@ -43,12 +46,15 @@ object Jdbc {
       val host = config.jdbcHost match {
         case Some(overrideHost) => overrideHost
         case None =>
-          if (config.snowflakeRegion == "us-west-2")
+          if (config.snowflakeRegion == AwsUsWest2Region)
             s"${config.account}.snowflakecomputing.com"
-          else if (regionsWithoutAwsSubdomain.contains(config.snowflakeRegion))
+          else if (AwsRegionsWithoutSegment.contains(config.snowflakeRegion))
             s"${config.account}.${config.snowflakeRegion}.snowflakecomputing.com"
-          else
+          else if (AwsRegionsWithSegment.contains(config.snowflakeRegion))
             s"${config.account}.${config.snowflakeRegion}.aws.snowflakecomputing.com"
+          else if (GcpRegions.contains(config.snowflakeRegion))
+            s"${config.account}.${config.snowflakeRegion}.gcp.snowflakecomputing.com"
+          else s"${config.account}.${config.snowflakeRegion}.azure.snowflakecomputing.com"
       }
 
       // Build connection properties
