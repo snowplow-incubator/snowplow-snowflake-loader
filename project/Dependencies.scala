@@ -27,10 +27,9 @@ object Dependencies {
     val enumeratum       = "1.7.0"
     val igluClient       = "1.0.2"
     val eventsManifest   = "0.3.0"
-    val badRows          = "2.1.0"
+    val badRows          = "2.1.1"
     val schemaDdl        = "0.13.0"
     val circe            = "0.14.1"
-    val jackson          = "2.9.10.7"
     // Scala (test only)
     val specs2           = "4.12.0"
     val scalacheck       = "1.15.4"
@@ -54,7 +53,6 @@ object Dependencies {
   val analyticsSdk     = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
   val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
   val igluClient       = "com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient
-  val jackson          = "com.fasterxml.jackson.core" % "jackson-databind"         % V.jackson
   val eventsManifest   = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
   val badRows          = "com.snowplowanalytics" %% "snowplow-badrows"             % V.badRows
   val schemaDdl        = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
