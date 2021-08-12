@@ -30,20 +30,25 @@ object Dependencies {
     val badRows          = "2.1.1"
     val schemaDdl        = "0.13.0"
     val circe            = "0.14.1"
+    val jacksonCbor      = "2.11.4" // Override provided version to fix security vulnerability
     // Scala (test only)
     val specs2           = "4.12.0"
     val scalacheck       = "1.15.4"
   }
 
   // Java
-  val hadoop           = "org.apache.hadoop"     % "hadoop-aws"                    % V.hadoop         % Provided
-  val hadoopCommon     = "org.apache.hadoop"     % "hadoop-common"                 % V.hadoop         % Provided
-  val hadoopClient     = "org.apache.hadoop"     % "hadoop-mapreduce-client-core"  % V.hadoop         % Provided
-  val snowflakeJdbc    = "net.snowflake"         % "snowflake-jdbc"                % V.snowflakeJdbc
-  val s3               = "com.amazonaws"         % "aws-java-sdk-s3"               % V.aws
-  val dynamodb         = "com.amazonaws"         % "aws-java-sdk-dynamodb"         % V.aws
-  val ssm              = "com.amazonaws"         % "aws-java-sdk-ssm"              % V.aws
-  val sts              = "com.amazonaws"         % "aws-java-sdk-sts"              % V.aws
+  val hadoop           = "org.apache.hadoop"                % "hadoop-aws"                    % V.hadoop         % Provided
+  val hadoopCommon     = "org.apache.hadoop"                % "hadoop-common"                 % V.hadoop         % Provided
+  val hadoopClient     = "org.apache.hadoop"                % "hadoop-mapreduce-client-core"  % V.hadoop         % Provided
+  val snowflakeJdbc    = "net.snowflake"                    % "snowflake-jdbc"                % V.snowflakeJdbc
+  val s3               = "com.amazonaws"                    % "aws-java-sdk-s3"               % V.aws
+  val dynamodb         = "com.amazonaws"                    % "aws-java-sdk-dynamodb"         % V.aws
+  val ssm              = "com.amazonaws"                    % "aws-java-sdk-ssm"              % V.aws
+  val sts              = "com.amazonaws"                    % "aws-java-sdk-sts"              % V.aws
+  val jacksonCbor      = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"       % V.jacksonCbor excludeAll(
+      // Prevent upgrading jackson core libs to incompatible version
+      ExclusionRule(organization="com.fasterxml.jackson.core")
+    )
 
   // Scala
   val spark            = "org.apache.spark"      %% "spark-core"                   % V.spark          % Provided
