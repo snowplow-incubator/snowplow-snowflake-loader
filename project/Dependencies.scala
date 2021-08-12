@@ -25,7 +25,7 @@ object Dependencies {
     val decline          = "1.4.0"
     val analyticsSdk     = "2.1.0"
     val enumeratum       = "1.7.0"
-    val igluClient       = "1.0.2"
+    val igluClient       = "1.1.1"
     val eventsManifest   = "0.3.0"
     val badRows          = "2.1.1"
     val schemaDdl        = "0.13.0"
