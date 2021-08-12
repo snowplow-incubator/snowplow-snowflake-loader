@@ -30,10 +30,6 @@ object BuildSettings {
     version := "0.8.1",
     organization := "com.snowplowanalytics",
     scalaVersion := "2.12.12",
-    resolvers ++= Seq(
-      "Sonatype OSS Snapshots" at "https://oss.sonatype.org/content/repositories/snapshots/",
-      "Snowplow Bintray" at "https://snowplow.bintray.com/snowplow-maven/"
-    ),
     Global / concurrentRestrictions += Tags.limit(Tags.Test, 1),
 
     javacOptions := Seq(
