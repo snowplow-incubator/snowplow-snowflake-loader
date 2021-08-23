@@ -27,7 +27,7 @@ import com.eed3si9n.jarjarabrams.ShadeRule
 object BuildSettings {
 
   lazy val buildSettings = Seq[Setting[_]](
-    version := "0.8.1",
+    version := "0.8.2",
     organization := "com.snowplowanalytics",
     scalaVersion := "2.12.12",
     Global / concurrentRestrictions += Tags.limit(Tags.Test, 1),

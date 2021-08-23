@@ -1,3 +1,10 @@
+Version 0.8.2 (2021-08-23)
+--------------------------
+Bump jackson-dataformat-cbor to 2.11.4 (#152)
+Remove bintray and oss snapshots resolvers (#151)
+Bump iglu-scala-client to 1.1.1 (#150)
+Bump snowplow-badrows to 2.1.1 (#149)
+
 Version 0.8.1 (2021-06-25)
 --------------------------
 Use non-AWS endpoints in host inference (#131)
