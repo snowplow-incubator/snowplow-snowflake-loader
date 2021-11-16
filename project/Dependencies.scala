@@ -20,7 +20,7 @@ object Dependencies {
     val snowflakeJdbc    = "3.13.5"
     val aws              = "1.11.870"
     // Scala
-    val spark            = "3.0.0"
+    val spark            = "3.1.2"
     val fs2              = "2.5.6"
     val decline          = "1.4.0"
     val analyticsSdk     = "2.1.0"

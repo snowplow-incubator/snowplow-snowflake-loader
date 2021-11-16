@@ -63,7 +63,10 @@ object BuildSettings {
     assemblyShadeRules in assembly := Seq(
       ShadeRule.rename(
         "com.amazonaws.**" -> "shadeaws.@1",
-        "org.apache.http.**" -> "shadehttp.@1"
+        "org.apache.http.**" -> "shadehttp.@1",
+
+       "cats.**" -> "shadecats.@1",
+       "shapeless.**" -> "shadeshapeless.@1"
       ).inAll
     ),
 
