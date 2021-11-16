@@ -1,3 +1,11 @@
+Version 0.9.0 (2021-11-17)
+--------------------------
+Remove s3committer in Transformer (#158)
+Disable caching in TransformJob (#157)
+Extend copyright notice to 2021 (#160)
+Bump sbt to 1.5.5 (#156)
+Bump Spark to 3.2.1 (#155)
+
 Version 0.8.2 (2021-08-23)
 --------------------------
 Bump jackson-dataformat-cbor to 2.11.4 (#152)
