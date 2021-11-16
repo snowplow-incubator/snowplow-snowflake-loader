@@ -41,8 +41,8 @@ object BuildSettings {
 
   // Makes package (build) metadata available withing source code
   lazy val scalifySettings = Seq(
-    sourceGenerators in Compile += Def.task {
-      val file = (sourceManaged in Compile).value / "settings.scala"
+    Compile / sourceGenerators += Def.task {
+      val file = (Compile / sourceManaged).value / "settings.scala"
       IO.write(file, """package com.snowplowanalytics.snowflake.generated
                        |object ProjectMetadata {
                        |  val version = "%s"
@@ -57,10 +57,10 @@ object BuildSettings {
 
   // sbt-assembly settings
   lazy val assemblySettings = Seq(
-    target in assembly := file("target/scala-2.12/assembled_jars/"),
-    assemblyJarName in assembly := { moduleName.value + "-" + version.value + ".jar" },
+    assembly / target := file("target/scala-2.12/assembled_jars/"),
+    assembly / assemblyJarName := { moduleName.value + "-" + version.value + ".jar" },
 
-    assemblyShadeRules in assembly := Seq(
+    assembly / assemblyShadeRules := Seq(
       ShadeRule.rename(
         "com.amazonaws.**" -> "shadeaws.@1",
         "org.apache.http.**" -> "shadehttp.@1",
@@ -70,8 +70,8 @@ object BuildSettings {
       ).inAll
     ),
 
-    assemblyExcludedJars in assembly := {
-      val cp = (fullClasspath in assembly).value
+    assembly / assemblyExcludedJars := {
+      val cp = (assembly / fullClasspath).value
       val excludes = Set(
         "jasper-compiler-5.5.12.jar",
         "hadoop-core-1.1.2.jar", // Provided by Amazon EMR. Delete this line if you're not on EMR
@@ -80,7 +80,7 @@ object BuildSettings {
       cp.filter { jar => excludes(jar.data.getName) }
     },
 
-    assemblyMergeStrategy in assembly := {
+    assembly / assemblyMergeStrategy := {
       case x if x.startsWith("META-INF") => MergeStrategy.discard
       case x if x.startsWith("mime.types") => MergeStrategy.first
       case "module-info.class" => MergeStrategy.discard
@@ -89,7 +89,7 @@ object BuildSettings {
       case PathList("org", "apache", "spark", "unused", tail@_*) => MergeStrategy.first
       case PathList("com", "github", "fge", tail@_*) => MergeStrategy.first
       case x =>
-        val oldStrategy = (assemblyMergeStrategy in assembly).value
+        val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     }
   )
