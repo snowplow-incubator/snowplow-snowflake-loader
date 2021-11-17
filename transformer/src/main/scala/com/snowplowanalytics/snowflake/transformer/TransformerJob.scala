@@ -102,7 +102,6 @@ object TransformerJob {
             .map(t => if (t) Some(sfErrChecked) else None)
         } yield crossBatchDeduped
       }
-      .cache()
 
     // Check if bad rows should be stored in case of error.
     // If bad rows need to be stored continue execution,
@@ -145,7 +144,7 @@ object TransformerJob {
           .write
           .mode(SaveMode.Overwrite)
           .text(badOutput)
-      case _ => None
+      case _ => ()
     }
 
     val keysFinal = keysAggregator.value.toList
