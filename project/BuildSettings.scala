@@ -20,6 +20,8 @@ import sbtassembly._
 import sbtassembly.AssemblyKeys._
 import com.eed3si9n.jarjarabrams.ShadeRule
 
+import sbtdynver.DynVerPlugin.autoImport._
+
 /**
  * Common settings-patterns for Snowplow apps and libraries.
  * To enable any of these you need to explicitly add Settings value to build.sbt
@@ -27,7 +29,6 @@ import com.eed3si9n.jarjarabrams.ShadeRule
 object BuildSettings {
 
   lazy val buildSettings = Seq[Setting[_]](
-    version := "0.8.2",
     organization := "com.snowplowanalytics",
     scalaVersion := "2.12.12",
     Global / concurrentRestrictions += Tags.limit(Tags.Test, 1),
@@ -92,5 +93,10 @@ object BuildSettings {
         val oldStrategy = (assembly / assemblyMergeStrategy).value
         oldStrategy(x)
     }
+  )
+
+  lazy val dynVerSettings = Seq(
+    ThisBuild / dynverVTagPrefix := false, // Otherwise git tags required to have v-prefix
+    ThisBuild / dynverSeparator := "-" // to be compatible with docker
   )
 }

@@ -34,6 +34,7 @@ lazy val loader = project.in(file("loader"))
   .settings(moduleName := "snowplow-snowflake-loader")
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.snowflakeJdbc,
@@ -47,6 +48,7 @@ lazy val transformer = project.in(file("transformer"))
   .settings(moduleName := "snowplow-snowflake-transformer")
   .settings(BuildSettings.assemblySettings)
   .settings(BuildSettings.buildSettings)
+  .settings(BuildSettings.dynVerSettings)
   .settings(
     libraryDependencies ++= Seq(
       Dependencies.hadoop,
