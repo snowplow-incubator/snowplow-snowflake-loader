@@ -89,13 +89,15 @@ object Cli {
   case class Transformer(loaderConfig: Config,
                          igluClient: Client[IO, Json],
                          inbatch: Boolean,
-                         eventsManifestConfig: Option[EventsManifestConfig])
+                         eventsManifestConfig: Option[EventsManifestConfig],
+                         s3a: Boolean)
 
   object Transformer {
     case class Raw(loaderConfig: Base64Encoded,
                    resolver: Base64Encoded,
                    inbatch: Boolean,
-                   eventsManifestConfig: Option[Base64Encoded])
+                   eventsManifestConfig: Option[Base64Encoded],
+                   s3a: Boolean)
 
     def parse(args: Seq[String]): EitherT[IO, String, Transformer] =
       transformer
@@ -113,7 +115,7 @@ object Cli {
           case Some(json) => EventsManifestConfig.parseJson[IO](igluClient, json.json).map(_.some)
           case None => EitherT.rightT[IO, String](none[EventsManifestConfig])
         }
-      } yield Transformer(cfg, igluClient, raw.inbatch, manifest)
+      } yield Transformer(cfg, igluClient, raw.inbatch, manifest, raw.s3a)
 
   }
 
@@ -197,11 +199,12 @@ object Cli {
 
   val inBatchDedupe = Opts.flag("inbatch-deduplication", "Enable in-batch natural deduplication").orFalse
   val evantsManifest = Opts.option[Base64Encoded]("events-manifest", "Snowplow Events Manifest JSON config, to enable cross-batch deduplication, base64-encoded").orNone
+  val s3a = Opts.flag("s3a", "Use s3a committer protocol (particular committer has to be configured separately via classifications)").orFalse
 
   val loader = Command("snowplow-snowflake-loader", "Snowplow Database orchestrator")(load.orElse(setup).orElse(migrate))
 
   val transformer = Command("snowplow-snowflake-transformer", "Spark job to transform enriched data to Snowflake-compatible format") {
-    (configEncoded, resolverEncoded, inBatchDedupe, evantsManifest).mapN(Transformer.Raw)
+    (configEncoded, resolverEncoded, inBatchDedupe, evantsManifest, s3a).mapN(Transformer.Raw)
   }
 }
 

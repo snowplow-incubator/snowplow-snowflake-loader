@@ -23,28 +23,30 @@ sealed trait TransformerJobConfig {
 
 object TransformerJobConfig {
 
-  case class S3Config(enrichedArchive: S3Folder, snowflakeOutput: S3Folder, badOutputFolder: Option[S3Folder], runId: String) extends TransformerJobConfig {
+  final case class S3Config(enrichedArchive: S3Folder, snowflakeOutput: S3Folder, badOutputFolder: Option[S3Folder], s3a: Boolean, runId: String) extends TransformerJobConfig {
+    val protocol = if (s3a) "s3a" else "s3"
+
     def input: String = {
       val (enrichedBucket, enrichedPath) = enrichedArchive.splitS3Folder
-      s"s3a://$enrichedBucket/$enrichedPath$runIdFolder/*"
+      s"$protocol://$enrichedBucket/$enrichedPath$runIdFolder/*"
     }
 
     def goodOutput: String = {
       val (bucket, path) = snowflakeOutput.splitS3Folder
-      s"s3a://$bucket/$path$runIdFolder"
+      s"$protocol://$bucket/$path$runIdFolder"
     }
 
     def badOutput: Option[String] = {
       badOutputFolder.map { o =>
         val (bucket, path) = o.splitS3Folder
-        s"s3a://$bucket/$path$runIdFolder"
+        s"$protocol://$bucket/$path$runIdFolder"
       }
     }
 
     def runIdFolder: String = runId.split("/").last
   }
 
-  case class FSConfig(input: String, goodOutput: String, badOutput: Option[String]) extends TransformerJobConfig {
+  final case class FSConfig(input: String, goodOutput: String, badOutput: Option[String]) extends TransformerJobConfig {
     def runId: String = "fs-run-id"
   }
 }

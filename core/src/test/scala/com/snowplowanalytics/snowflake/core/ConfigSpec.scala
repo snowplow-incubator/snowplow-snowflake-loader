@@ -456,11 +456,12 @@ class ConfigSpec extends Specification {
         ),
         awsRegion = "us-west-1",
         dynamodbTable = "snowplow-integration-test-crossbatch-dedupe"
-      ))
+      )),
+      false
     )
 
     Cli.Transformer.parse(args).value.unsafeRunSync() must beRight.like {
-      case transformer @ Cli.Transformer(_, client, _, _) =>
+      case transformer @ Cli.Transformer(_, client, _, _, _) =>
         val updatedClient: Resolver[IO] = client.resolver.copy(cache = None)
         val updatedConfig = transformer.copy(igluClient = transformer.igluClient.copy(resolver = updatedClient))
         updatedConfig must beEqualTo(expected)
