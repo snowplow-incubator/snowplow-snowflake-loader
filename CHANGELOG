@@ -1,3 +1,7 @@
+Version 0.9.1 (2022-03-07)
+--------------------------
+Bump snowflake-jdbc to 3.13.15 (#162)
+
 Version 0.9.0 (2021-11-17)
 --------------------------
 Remove s3committer in Transformer (#158)
