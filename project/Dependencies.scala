@@ -30,7 +30,7 @@ object Dependencies {
     val badRows          = "2.1.1"
     val schemaDdl        = "0.13.0"
     val circe            = "0.14.1"
-    val jacksonCbor      = "2.11.4" // Override provided version to fix security vulnerability
+    val jackson          = "2.12.7" // Override provided version to fix security vulnerability
     // Scala (test only)
     val specs2           = "4.12.0"
     val scalacheck       = "1.15.4"
@@ -45,26 +45,25 @@ object Dependencies {
   val dynamodb         = "com.amazonaws"                    % "aws-java-sdk-dynamodb"         % V.aws
   val ssm              = "com.amazonaws"                    % "aws-java-sdk-ssm"              % V.aws
   val sts              = "com.amazonaws"                    % "aws-java-sdk-sts"              % V.aws
-  val jacksonCbor      = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"       % V.jacksonCbor excludeAll(
-      // Prevent upgrading jackson core libs to incompatible version
-      ExclusionRule(organization="com.fasterxml.jackson.core")
-    )
+  val jacksonCbor      = "com.fasterxml.jackson.dataformat" % "jackson-dataformat-cbor"       % V.jackson
+  val jacksonDatabind  = "com.fasterxml.jackson.core"       % "jackson-databind"              % V.jackson
 
   // Scala
-  val spark            = "org.apache.spark"      %% "spark-core"                   % V.spark          % Provided
-  val sparkSql         = "org.apache.spark"      %% "spark-sql"                    % V.spark          % Provided
-  val fs2              = "co.fs2"                %% "fs2-core"                     % V.fs2
-  val decline          = "com.monovore"          %% "decline"                      % V.decline
-  val analyticsSdk     = "com.snowplowanalytics" %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
-  val enumeratum       = "com.beachape"          %% "enumeratum"                   % V.enumeratum
-  val igluClient       = "com.snowplowanalytics" %% "iglu-scala-client"           % V.igluClient
-  val eventsManifest   = "com.snowplowanalytics" %% "snowplow-events-manifest"     % V.eventsManifest
-  val badRows          = "com.snowplowanalytics" %% "snowplow-badrows"             % V.badRows
-  val schemaDdl        = "com.snowplowanalytics" %% "schema-ddl"                   % V.schemaDdl
-  val circeJawn        = "io.circe"              %% "circe-jawn"                   % V.circe          % Test
-  val circeCore        = "io.circe"              %% "circe-core"                   % V.circe          % Test
-  val circeOptics      = "io.circe"              %% "circe-optics"                 % V.circe          % Test
-  val circeLiteral     = "io.circe"              %% "circe-literal"                % V.circe          % Test
+  val spark            = "org.apache.spark"              %% "spark-core"                   % V.spark          % Provided
+  val sparkSql         = "org.apache.spark"              %% "spark-sql"                    % V.spark          % Provided
+  val fs2              = "co.fs2"                        %% "fs2-core"                     % V.fs2
+  val decline          = "com.monovore"                  %% "decline"                      % V.decline
+  val analyticsSdk     = "com.snowplowanalytics"         %% "snowplow-scala-analytics-sdk" % V.analyticsSdk
+  val enumeratum       = "com.beachape"                  %% "enumeratum"                   % V.enumeratum
+  val igluClient       = "com.snowplowanalytics"         %% "iglu-scala-client"            % V.igluClient
+  val eventsManifest   = "com.snowplowanalytics"         %% "snowplow-events-manifest"     % V.eventsManifest
+  val badRows          = "com.snowplowanalytics"         %% "snowplow-badrows"             % V.badRows
+  val schemaDdl        = "com.snowplowanalytics"         %% "schema-ddl"                   % V.schemaDdl
+  val jacksonScala     = "com.fasterxml.jackson.module"  %% "jackson-module-scala"         % V.jackson
+  val circeJawn        = "io.circe"                      %% "circe-jawn"                   % V.circe          % Test
+  val circeCore        = "io.circe"                      %% "circe-core"                   % V.circe          % Test
+  val circeOptics      = "io.circe"                      %% "circe-optics"                 % V.circe          % Test
+  val circeLiteral     = "io.circe"                      %% "circe-literal"                % V.circe          % Test
 
 
   // Scala (test only)

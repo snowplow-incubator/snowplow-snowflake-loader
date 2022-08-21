@@ -67,6 +67,8 @@ lazy val transformer = project.in(file("transformer"))
 
 lazy val commonDependencies = Seq(
   Dependencies.jacksonCbor,
+  Dependencies.jacksonDatabind,
+  Dependencies.jacksonScala,
   // Scala
   Dependencies.analyticsSdk,
   Dependencies.fs2,
