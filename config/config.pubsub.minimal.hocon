@@ -1,0 +1,21 @@
+{
+  "input": {
+    "subscription": "projects/myproject/subscriptions/snowplow-enriched"
+  }
+
+  "output": {
+
+    "good": {
+      "url": "https://orgname.accountname.snowflakecomputing.com"
+      "user": "snowplow"
+      "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
+      "database": "snowplow"
+      "schema": "atomic"
+    }
+
+    "bad": {
+      "topic": "projects/myproject/topics/snowplow-bad"
+    }
+
+  }
+}

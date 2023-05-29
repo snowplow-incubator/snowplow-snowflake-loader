@@ -1,0 +1,183 @@
+{
+  "input": {
+    # -- kinesis stream for the source of enriched events
+    "streamName": "snowplow-enriched-events"
+
+    # -- name to use for the KCL dynamodb table
+    "appName": "snowplow-snowflake-loader"
+
+    # -- From where the loader should start consuming if this is the first time it is run.
+    # -- On subsequent runs, it will always resume from where it last checkpointed.
+    "initialPosition": {
+      # -- Options are `TRIM_HORIZON` for the oldest available events, `LATEST` for latest events,
+      # -- or `AT_TIMESTAMP` to start consuming from events written at a particular time.
+      "type": "TRIM_HORIZON"
+
+      # -- Only required if `initialPosition.type` is AT_TIMESTAMP
+      "timestamp": "2023-01-01T00:00:00Z"
+    }
+
+    # -- How the underlying Kinesis client should fetch events from the stream
+    "retrievalMode": {
+      # -- Options are "Polling" for the client to poll Kinesis for more events when needed
+      # -- or "FanOut" to enabled Kinesis's Enhanced Fan Out feature using HTTP/2
+      "type": "Polling"
+
+      # -- Only used if retrieval mode is type Polling. How many events the client may fetch in a single poll.
+      "maxRecords": 1000
+    }
+
+    # -- The number of batches of events which are pre-fetched from kinesis.
+    # -- Increasing this above 1 is not known to improve performance.
+    "bufferSize": 1
+
+  }
+
+  "output": {
+
+    "good": {
+      # -- uri of the snowflake account
+      "url": "https://orgname.accountname.snowflakecomputing.com"
+
+      # -- snowflake user who has necessary privileges
+      "user": "snowplow"
+
+      # -- snowflake private key, used to connect to the account
+      "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
+
+      # -- optional, passphrase for the private key
+      "privateKeyPassphrase": ${?SNOWFLAKE_PRIVATE_KEY_PASSPHRASE}
+
+      # -- optional, snowflake role which the snowflake user should assume
+      "role": "snowplow_loader"
+
+      # -- name of the snowflake database containing the events table
+      "database": "snowplow"
+
+      # -- name of the snowflake schema containing the events table
+      "schema": "atomic"
+
+      # -- name to use for the events table.
+      "table": "events"
+
+      # -- name to use for the snowflake channel.
+      "channel": "snowplow"
+
+      # -- Timeouts used for JDBC operations
+      "jdbcLoginTimeout": "60 seconds"
+      "jdbcNetworkTimeout": "60 seconds"
+      "jdbcQueryTimeout": "60 seconds"
+    }
+
+    "bad": {
+      # -- output kinesis stream for emitting failed events that could not be processed
+      "streamName": "bad"
+
+      # -- how to retry sending failed events if we exceed the kinesis write throughput limits
+      "throttledBackoffPolicy": {
+        "minBackoff": "100 milliseconds"
+        "maxBackoff": "1 second"
+      }
+
+      # -- the maximum allowed to records we are allowed to send to Kinesis in 1 PutRecords request
+      "recordLimit": 500
+
+      # -- the maximum allowed to bytes we are allowed to send to Kinesis in 1 PutRecords request
+      "byteLimit": 5242880
+    }
+
+  }
+
+  "batching": {
+
+    # - Events are emitted to Snowflake when the batch reaches this size in bytes
+    "maxBytes": 16000000
+
+    # - Events are emitted to Snowflake for a maximum of this duration, even if the `maxBytes` size has not been reached
+    "maxDelay": "1 second"
+
+    # - How many batches can we send simultaneously over the network to Snowflake.
+    "uploadConcurrency":  1
+  }
+
+  # -- Schemas that won't be loaded to Snowflake. Optional, default value []
+  "skipSchemas": [
+    "iglu:com.acme/skipped1/jsonschema/1-0-0",
+    "iglu:com.acme/skipped2/jsonschema/1-0-*",
+    "iglu:com.acme/skipped3/jsonschema/1-*-*",
+    "iglu:com.acme/skipped4/jsonschema/*-*-*"
+  ]
+  
+  "monitoring": {
+    "metrics": {
+
+      # -- Send runtime metrics to a statsd server
+      "statsd": {
+        "hostname": "127.0.0.1"
+        "port": 8125
+
+        # -- Map of key/value pairs to be send along with the metric
+        "tags": {
+          "myTag": "xyz"
+        }
+
+        # -- How often to report metrics
+        "period": "1 minute"
+
+        # -- Prefix used for the metric name when sending to statsd
+        "prefix": "snowplow.lakeloader"
+      }
+    }
+
+    # -- Report unexpected runtime exceptions to Sentry
+    "sentry": {
+      "dsn": "https://public@sentry.example.com/1"
+
+      # -- Map of key/value pairs to be included as tags
+      "tags": {
+        "myTag": "xyz"
+      }
+    }
+  }
+
+  # -- Optional, configure telemetry
+  # -- All the fields are optional
+  "telemetry": {
+
+    # -- Set to true to disable telemetry
+    "disable": false
+
+    # -- Interval for the heartbeat event
+    "interval": 15 minutes
+
+    # -- HTTP method used to send the heartbeat event
+    "method": POST
+
+    # -- URI of the collector receiving the heartbeat event
+    "collectorUri": collector-g.snowplowanalytics.com
+
+    # -- Port of the collector receiving the heartbeat event
+    "collectorPort": 443
+
+    # -- Whether to use https or not
+    "secure": true
+
+    # -- Identifier intended to tie events together across modules,
+    # -- infrastructure and apps when used consistently
+    "userProvidedId": my_pipeline
+
+    # -- ID automatically generated upon running a modules deployment script
+    # -- Intended to identify each independent module, and the infrastructure it controls
+    "autoGeneratedId": hfy67e5ydhtrd
+
+    # -- Unique identifier for the VM instance
+    # -- Unique for each instance of the app running within a module
+    "instanceId": 665bhft5u6udjf
+
+    # -- Name of the terraform module that deployed the app
+    "moduleName": snowflake-loader-vmss
+
+    # -- Version of the terraform module that deployed the app
+    "moduleVersion": 1.0.0
+  }
+}
