@@ -1,0 +1,22 @@
+{
+  "input": {
+    "topicName": "sp-dev-enriched"
+    "bootstrapServers": "localhost:9092"
+  }
+
+  "output": {
+
+    "good": {
+      "url": "https://orgname.accountname.snowflakecomputing.com"
+      "user": "snowplow"
+      "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
+      "database": "snowplow"
+      "schema": "atomic"
+    }
+
+    "bad": {
+      "topicName": "sp-dev-bad"
+      "bootstrapServers": "localhost:9092"
+    }
+  }
+}
