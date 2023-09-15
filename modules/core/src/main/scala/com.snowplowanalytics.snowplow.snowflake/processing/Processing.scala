@@ -9,11 +9,12 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
 import cats.{Applicative, Monad}
-import cats.effect.Async
+import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
 import fs2.{Pipe, Stream}
 
 import java.nio.charset.StandardCharsets
+import java.time.OffsetDateTime
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -97,28 +98,33 @@ object Processing {
     }
 
   /** Transform the Event into values compatible with the snowflake ingest sdk */
-  private def transform[F[_]: Monad](badProcessor: BadRowProcessor): Pipe[F, ParsedBatch, BatchAfterTransform] =
-    _.evalMap { case ParsedBatch(events, bad, token) =>
-      events
-        .traverse { e =>
-          Applicative[F].pure {
-            Transform
-              .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, e)
-              .map { namedValues =>
-                val asMap = namedValues.map { case Caster.NamedValue(k, v) =>
-                  k -> v
-                }.toMap
-                (e, asMap)
-              }
-          }
+  private def transform[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, ParsedBatch, BatchAfterTransform] =
+    in =>
+      for {
+        ParsedBatch(events, bad, token) <- in
+        loadTstamp <- Stream.eval(Sync[F].realTimeInstant).map(SnowflakeCaster.timestampValue)
+        result <- Stream.eval(transformBatch[F](badProcessor, events, loadTstamp))
+        (moreBad, transformed) = result.separate
+      } yield BatchAfterTransform(transformed.toVector, events.size + bad.size, bad ::: moreBad, token)
+
+  private def transformBatch[F[_]: Monad](
+    badProcessor: BadRowProcessor,
+    events: List[Event],
+    loadTstamp: OffsetDateTime
+  ): F[List[Either[BadRow, (Event, Map[String, AnyRef])]]] =
+    events
+      .traverse { e =>
+        Applicative[F].pure {
+          Transform
+            .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, e)
+            .map { namedValues =>
+              val asMap = namedValues.map { case Caster.NamedValue(k, v) =>
+                k -> v
+              }.toMap
+              (e, asMap + ("load_tstamp" -> loadTstamp))
+            }
         }
-        .flatMap { result =>
-          Applicative[F].pure(result.separate)
-        }
-        .map { case (moreBad, transformed) =>
-          BatchAfterTransform(transformed.toVector, events.size + bad.size, bad ::: moreBad, token)
-        }
-    }
+      }
 
   /**
    * First attempt to write events to Snowflake
