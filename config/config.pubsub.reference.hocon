@@ -47,8 +47,8 @@
       # -- name to use for the events table.
       "table": "events"
 
-      # -- name to use for the snowflake channel. Default is the local hostname.
-      "channel": ${HOSTNAME}
+      # -- name to use for the snowflake channel.
+      "channel": "snowplow"
 
       # -- Timeouts used for JDBC operations
       "jdbcLoginTimeout": "60 seconds"

@@ -25,7 +25,7 @@ object MockEnvironment {
   object Action {
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
-    case class AddedColumns(columns: List[String]) extends Action
+    case class AlterTableAddedColumns(columns: List[String]) extends Action
     case object ResetChannel extends Action
     case class InsertedRows(rowCount: Int) extends Action
     case class AddedGoodCountMetric(count: Int) extends Action
@@ -38,12 +38,15 @@ object MockEnvironment {
    *
    * @param inputs
    *   Input events to send into the environment.
+   * @param channelResponses
+   *   Responses we want the `ChannelProvider` to return when someone calls `insert`
    * @return
    *   An environment and a Ref that records the actions make by the environment
    */
-  def build(inputs: List[TokenedEvents]): IO[MockEnvironment] =
+  def build(inputs: List[TokenedEvents], channelResponses: List[List[ChannelProvider.InsertFailure]] = Nil): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
+      channelProvider <- testChannelProvider(state, channelResponses)
     } yield {
       val env = Environment(
         appInfo = appInfo,
@@ -51,7 +54,7 @@ object MockEnvironment {
         badSink = testSink(state),
         httpClient = testHttpClient,
         tblManager = testTableManager(state),
-        channelProvider = testChannelProvider(state),
+        channelProvider = channelProvider,
         metrics = testMetrics(state)
       )
       MockEnvironment(state, env)
@@ -66,7 +69,7 @@ object MockEnvironment {
 
   private def testTableManager(state: Ref[IO, Vector[Action]]): TableManager[IO] = new TableManager[IO] {
     def addColumns(columns: List[String]): IO[Unit] =
-      state.update(_ :+ AddedColumns(columns))
+      state.update(_ :+ AlterTableAddedColumns(columns))
   }
 
   private def testSourceAndAck(inputs: List[TokenedEvents], state: Ref[IO, Vector[Action]]): SourceAndAck[IO] =
@@ -90,13 +93,34 @@ object MockEnvironment {
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
 
-  private def testChannelProvider(ref: Ref[IO, Vector[Action]]): ChannelProvider[IO] = new ChannelProvider[IO] {
-    def reset: IO[Unit] =
-      ref.update(_ :+ ResetChannel)
+  /**
+   * Mocked implementation of a `ChannelProvider`
+   *
+   * @param actionRef
+   *   Global Ref used to accumulate actions that happened
+   * @param responses
+   *   Responses that this mocked ChannelProvider should return each time someone calls `insert`. If
+   *   no responses given, then it will return with a successful response.
+   */
+  private def testChannelProvider(
+    actionRef: Ref[IO, Vector[Action]],
+    responses: List[List[ChannelProvider.InsertFailure]]
+  ): IO[ChannelProvider[IO]] =
+    for {
+      responseRef <- Ref[IO].of(responses)
+    } yield new ChannelProvider[IO] {
+      def reset: IO[Unit] =
+        actionRef.update(_ :+ ResetChannel)
 
-    def insert(rows: Seq[Map[String, AnyRef]]): IO[Seq[ChannelProvider.InsertFailure]] =
-      ref.update(_ :+ InsertedRows(rows.size)).as(Seq.empty)
-  }
+      def insert(rows: Seq[Map[String, AnyRef]]): IO[List[ChannelProvider.InsertFailure]] =
+        for {
+          response <- responseRef.modify {
+                        case head :: tail => (tail, head)
+                        case Nil => (Nil, Nil)
+                      }
+          _ <- actionRef.update(_ :+ InsertedRows(rows.size - response.size))
+        } yield response
+    }
 
   def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {
     def addBad(count: Int): IO[Unit] =

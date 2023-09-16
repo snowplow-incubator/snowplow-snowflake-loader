@@ -11,6 +11,7 @@ import cats.effect.IO
 import fs2.Stream
 import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
+import net.snowflake.ingest.utils.{ErrorCode, SFException}
 
 import java.nio.charset.StandardCharsets
 
@@ -25,8 +26,11 @@ class ProcessingSpec extends Specification with CatsEffect {
   def is = s2"""
   The snowflake loader should:
     Insert events to Snowflake and ack the events $e1
-    Send badly formatted events to the bad sink $e2
+    Emit BadRows when there are badly formatted events $e2
     Write good batches and bad events when input contains both $e3
+    Alter the Snowflake table when the ChannelProvider reports missing columns $e4
+    Emit BadRows when the ChannelProvider reports a problem with the data $e5
+    Abort processing and don't ack events when the ChannelProvider reports a runtime error $e6
   """
 
   def e1 =
@@ -100,6 +104,77 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.Checkpointed(List(inputs(2).ack))
       )
     )
+
+  def e4 = {
+    val mockedChannelResponses = List(
+      List(
+        ChannelProvider.InsertFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+      ),
+      Nil
+    )
+
+    for {
+      inputs <- generateEvents.take(1).compile.toList
+      control <- MockEnvironment.build(inputs, mockedChannelResponses)
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.InsertedRows(1),
+        Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
+        Action.ResetChannel,
+        Action.InsertedRows(1),
+        Action.AddedGoodCountMetric(2),
+        Action.AddedBadCountMetric(0),
+        Action.Checkpointed(List(inputs(0).ack))
+      )
+    )
+  }
+
+  def e5 = {
+    val mockedChannelResponses = List(
+      List(
+        ChannelProvider.InsertFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+      ),
+      Nil
+    )
+
+    for {
+      inputs <- generateEvents.take(1).compile.toList
+      control <- MockEnvironment.build(inputs, mockedChannelResponses)
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.InsertedRows(1),
+        Action.SentToBad(1),
+        Action.AddedGoodCountMetric(1),
+        Action.AddedBadCountMetric(1),
+        Action.Checkpointed(List(inputs(0).ack))
+      )
+    )
+  }
+
+  def e6 = {
+    val mockedChannelResponses = List(
+      List(
+        ChannelProvider.InsertFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+      ),
+      Nil
+    )
+
+    for {
+      inputs <- generateEvents.take(1).compile.toList
+      control <- MockEnvironment.build(inputs, mockedChannelResponses)
+      _ <- Processing.stream(control.environment).compile.drain.handleError(_ => ())
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.InsertedRows(1)
+      )
+    )
+  }
+
 }
 
 object ProcessingSpec {

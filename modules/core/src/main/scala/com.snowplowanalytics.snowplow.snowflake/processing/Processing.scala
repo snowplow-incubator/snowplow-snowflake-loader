@@ -12,6 +12,9 @@ import cats.{Applicative, Monad}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
 import fs2.{Pipe, Stream}
+import net.snowflake.ingest.utils.{ErrorCode, SFException}
+import org.typelevel.log4cats.Logger
+import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
@@ -26,6 +29,8 @@ import com.snowplowanalytics.snowplow.loaders.Transform
 
 object Processing {
 
+  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
     env.source.stream(eventProcessingConfig, eventProcessor(env))
@@ -38,6 +43,8 @@ object Processing {
     bad: List[BadRow],
     token: Unique.Token
   )
+
+  type EventWithTransform = (Event, Map[String, AnyRef])
 
   /**
    * State of a batch for all stages post-transform
@@ -54,11 +61,41 @@ object Processing {
    *   The token to be emitted after we have finished processing all events
    */
   private case class BatchAfterTransform(
-    toBeInserted: Vector[(Event, Map[String, AnyRef])],
+    toBeInserted: Vector[EventWithTransform],
     origBatchSize: Int,
     badAccumulated: List[BadRow],
     token: Unique.Token
   )
+
+  /**
+   * Result of attempting to insert a batch of events
+   *
+   * @param extraCols
+   *   The column names which were present in the batch but missing in the table
+   * @param eventsWithExtraCols
+   *   Events which failed to be inserted because they contained extra columns are missing in the
+   *   table. These issues should be resolved once we alter the table.
+   * @param unexpectedFailures
+   *   Events which failed to be inserted for any other reason
+   */
+  private case class InsertResult(
+    extraColsRequired: Set[String],
+    eventsWithExtraCols: Vector[EventWithTransform],
+    unexpectedFailures: List[(Event, SFException)]
+  )
+
+  private object InsertResult {
+    def empty: InsertResult = InsertResult(Set.empty, Vector.empty, Nil)
+
+    def buildFrom(events: Vector[EventWithTransform], results: List[ChannelProvider.InsertFailure]): InsertResult =
+      results.foldLeft(InsertResult.empty) { case (InsertResult(extraCols, eventsWithExtraCols, unexpected), failure) =>
+        val event = fastGetByIndex(events, failure.index)
+        if (failure.extraCols.nonEmpty)
+          InsertResult(extraCols ++ failure.extraCols, eventsWithExtraCols :+ event, unexpected)
+        else
+          InsertResult(extraCols, eventsWithExtraCols, (event._1, failure.cause) :: unexpected)
+      }
+  }
 
   private def eventProcessor[F[_]: Async](
     env: Environment[F]
@@ -69,6 +106,7 @@ object Processing {
       .through(transform(badProcessor))
       .through(sinkAttempt1(env, badProcessor))
       .through(sinkAttempt2(env, badProcessor))
+      .prefetch // because sending failed events must not block upstream
       .through(sendFailedEvents(env))
       .through(sendMetrics(env))
       .map(_.token)
@@ -132,7 +170,7 @@ object Processing {
    * Insert failures are expected if the Event contains columns which are not present in the target
    * table. If this happens, we alter the table ready for the second attempt
    */
-  private def sinkAttempt1[F[_]: Monad](
+  private def sinkAttempt1[F[_]: Sync](
     env: Environment[F],
     badProcessor: BadRowProcessor
   ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
@@ -142,15 +180,17 @@ object Processing {
       else
         for {
           notInserted <- env.channelProvider.insert(events.map(_._2))
-          (reqExtraCols, otherFails) = separateFailures(notInserted)
-          _ <- handleSchemaEvolution(env, reqExtraCols)
+          folded = InsertResult.buildFrom(events, notInserted)
+          _ <- abortIfFatalException[F](folded.unexpectedFailures)
+          _ <- handleSchemaEvolution(env, folded.extraColsRequired)
         } yield {
-          val toBeRetried = reqExtraCols.map(rec => fastGetByIndex(events, rec.index)).toVector
-          val moreBad = otherFails.map { of =>
-            val event = fastGetByIndex(events, of.index)
-            BadRow.LoaderRuntimeError(badProcessor, of.reason, BadPayload.LoaderPayload(event._1))
+          val moreBad = folded.unexpectedFailures.map { case (event, sfe) =>
+            badRowFromInsertFailure(badProcessor, event, sfe)
           }
-          batch.copy(toBeInserted = toBeRetried, badAccumulated = moreBad ::: bad)
+          batch.copy(
+            toBeInserted = folded.eventsWithExtraCols,
+            badAccumulated = moreBad ::: bad
+          )
         }
     }
 
@@ -160,7 +200,7 @@ object Processing {
    * This happens after we have attempted to alter the table for any new columns. So insert errors
    * at this stage are unexpected.
    */
-  private def sinkAttempt2[F[_]: Monad](
+  private def sinkAttempt2[F[_]: Sync](
     env: Environment[F],
     badProcessor: BadRowProcessor
   ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
@@ -170,32 +210,53 @@ object Processing {
       else
         for {
           notInserted <- env.channelProvider.insert(events.map(_._2))
+          mapped = notInserted.map(f => (fastGetByIndex(events, f.index)._1, f.cause))
+          _ <- abortIfFatalException[F](mapped)
         } yield {
-          val moreBad = notInserted.map {
-            case ChannelProvider.UnexpectedFailure(index, reason) =>
-              val event = fastGetByIndex(events, index)
-              BadRow.LoaderRuntimeError(badProcessor, reason, BadPayload.LoaderPayload(event._1))
-            case ChannelProvider.RequiresExtraColumns(index, extraCols) =>
-              // This is an illegal state.  We have already altered the table, so it is unexpected for
-              // a failure to happen because of extra columns in the event.
-              val event = fastGetByIndex(events, index)
-              val missing = extraCols.mkString(", ")
-              BadRow.LoaderRuntimeError(badProcessor, s"Table missing columns: $missing", BadPayload.LoaderPayload(event._1))
+          val moreBad = mapped.map { case (event, sfe) =>
+            badRowFromInsertFailure(badProcessor, event, sfe)
           }
-          batch.copy(toBeInserted = Vector.empty, badAccumulated = moreBad.toList ::: bad)
+          batch.copy(toBeInserted = Vector.empty, badAccumulated = moreBad ::: bad)
         }
     }
 
-  private def separateFailures(
-    insertFailures: Seq[ChannelProvider.InsertFailure]
-  ): (List[ChannelProvider.RequiresExtraColumns], List[ChannelProvider.UnexpectedFailure]) =
-    insertFailures.foldLeft(
-      (List.empty[ChannelProvider.RequiresExtraColumns], List.empty[ChannelProvider.UnexpectedFailure])
-    ) {
-      case ((accExtraCols, accUnexpected), extraCols: ChannelProvider.RequiresExtraColumns) =>
-        (extraCols :: accExtraCols, accUnexpected)
-      case ((accExtraCols, accUnexpected), unexpected: ChannelProvider.UnexpectedFailure) =>
-        (accExtraCols, unexpected :: accUnexpected)
+  private def badRowFromInsertFailure(
+    badProcessor: BadRowProcessor,
+    event: Event,
+    cause: SFException
+  ): BadRow =
+    BadRow.LoaderRuntimeError(badProcessor, cause.getMessage, BadPayload.LoaderPayload(event))
+
+  /**
+   * The sub-set of vendor codes that indicate a problem with *data* rather than problems with the
+   * environment
+   */
+  private val dataIssueVendorCodes: Set[String] =
+    List(
+      ErrorCode.INVALID_VALUE_ROW,
+      ErrorCode.INVALID_FORMAT_ROW,
+      ErrorCode.MAX_ROW_SIZE_EXCEEDED,
+      ErrorCode.UNKNOWN_DATA_TYPE,
+      ErrorCode.NULL_VALUE,
+      ErrorCode.NULL_OR_EMPTY_STRING
+    ).map(_.getMessageCode).toSet
+
+  /**
+   * Raises an exception if needed
+   *
+   * The Snowflake SDK returns *all* exceptions as though they are equal. But we want to treat them
+   * separately:
+   *   - Problems with data should be handled as Failed Events
+   *   - Runtime problems (e.g. network issue or closed channel) should halt processing, so we don't
+   *     send all events to the bad topic.
+   */
+  private def abortIfFatalException[F[_]: Sync](results: List[(Event, SFException)]): F[Unit] =
+    results.traverse_ { case (_, sfe) =>
+      if (dataIssueVendorCodes.contains(sfe.getVendorCode))
+        Sync[F].unit
+      else
+        Logger[F].error(sfe)("Insert yielded an error which this app cannot tolerate") *>
+          Sync[F].raiseError[Unit](sfe)
     }
 
   /**
@@ -204,17 +265,15 @@ object Processing {
    */
   private def handleSchemaEvolution[F[_]: Monad](
     env: Environment[F],
-    insertFailures: List[ChannelProvider.RequiresExtraColumns]
+    extraColsRequired: Set[String]
   ): F[Unit] =
-    if (insertFailures.isEmpty)
+    if (extraColsRequired.isEmpty)
       ().pure[F]
-    else {
-      val extraCols = insertFailures.foldLeft(Set.empty[String])(_ ++ _.extraCols)
+    else
       for {
-        _ <- env.tblManager.addColumns(extraCols.toList)
+        _ <- env.tblManager.addColumns(extraColsRequired.toList)
         _ <- env.channelProvider.reset
       } yield ()
-    }
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.evalTap { batch =>

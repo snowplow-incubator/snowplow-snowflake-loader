@@ -21,7 +21,7 @@ import net.snowflake.ingest.streaming.{
   SnowflakeStreamingIngestClient,
   SnowflakeStreamingIngestClientFactory
 }
-import net.snowflake.ingest.utils.ParameterProvider
+import net.snowflake.ingest.utils.{ParameterProvider, SFException}
 
 import com.snowplowanalytics.snowplow.snowflake.Config
 
@@ -47,35 +47,28 @@ trait ChannelProvider[F[_]] {
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def insert(rows: Seq[Map[String, AnyRef]]): F[Seq[ChannelProvider.InsertFailure]]
+  def insert(rows: Seq[Map[String, AnyRef]]): F[List[ChannelProvider.InsertFailure]]
 }
 
 object ChannelProvider {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  /** The result of trying to insert an event */
-  sealed trait InsertFailure
-
   /**
-   * Result of an insert when the event contains columns which are not present in the table
-   *
+   * The result of trying to insert an event
    * @param index
    *   Refers to the row number in the batch of attempted events
    * @param extraCols
-   *   The column names which were present in the table but not the batch
+   *   The column names which were present in the batch but missing in the table
+   * @param cause
+   *   The Snowflake exception, whose error code and message describes the reason for the failed
+   *   insert
    */
-  case class RequiresExtraColumns(index: Long, extraCols: Seq[String]) extends InsertFailure
-
-  /**
-   * Result of an insert for any reason other than missing columns in the table
-   *
-   * @param index
-   *   Refers to the row number in the batch of attempted events
-   * @param reason
-   *   Reason for the failure
-   */
-  case class UnexpectedFailure(index: Long, reason: String) extends InsertFailure
+  case class InsertFailure(
+    index: Long,
+    extraCols: List[String],
+    cause: SFException
+  )
 
   def make[F[_]: Async](config: Config.Snowflake): Resource[F, ChannelProvider[F]] =
     for {
@@ -104,7 +97,7 @@ object ChannelProvider {
           }
         }
 
-      def insert(rows: Seq[Map[String, AnyRef]]): F[Seq[InsertFailure]] =
+      def insert(rows: Seq[Map[String, AnyRef]]): F[List[InsertFailure]] =
         sem.permit.use { _ =>
           for {
             channel <- ref.get
@@ -113,13 +106,14 @@ object ChannelProvider {
         }
     }
 
-  private def parseResponse(response: InsertValidationResponse): Seq[InsertFailure] =
+  private def parseResponse(response: InsertValidationResponse): List[InsertFailure] =
     response.getInsertErrors.asScala.map { insertError =>
-      Option(insertError.getExtraColNames) match {
-        case Some(extraCols) => RequiresExtraColumns(insertError.getRowIndex, extraCols.asScala.toSeq)
-        case None => UnexpectedFailure(insertError.getRowIndex, insertError.getMessage)
-      }
-    }.toSeq
+      InsertFailure(
+        insertError.getRowIndex,
+        Option(insertError.getExtraColNames).fold(List.empty[String])(_.asScala.toList),
+        insertError.getException
+      )
+    }.toList
 
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
