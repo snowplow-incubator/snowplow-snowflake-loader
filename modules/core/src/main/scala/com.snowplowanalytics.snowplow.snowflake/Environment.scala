@@ -42,7 +42,7 @@ object Environment {
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       badSink <- sink(config.output.bad)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
-      xa = SQLUtils.transactor[F](config.output.good)
+      xa <- Resource.eval(SQLUtils.transactor[F](config.output.good))
       _ <- Resource.eval(SQLUtils.createTable(config.output.good, xa))
       tblManager = TableManager.fromTransactor(config.output.good, xa)
       channelProvider <- ChannelProvider.make(config.output.good)

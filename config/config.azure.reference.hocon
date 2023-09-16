@@ -27,6 +27,9 @@
       # -- snowflake private key, used to connect to the account
       "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
 
+      # -- optional, passphrase for the private key
+      "privateKeyPassphrase": ${?SNOWFLAKE_PRIVATE_KEY_PASSPHRASE}
+
       # -- optional, snowflake role which the snowflake user should assume
       "role": "snowplow_loader"
 

@@ -13,23 +13,37 @@ import doobie.{ConnectionIO, Fragment, Transactor}
 import doobie.implicits._
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
+import net.snowflake.ingest.utils.{Utils => SnowflakeSdkUtils}
 
 import java.util.Properties
+import java.security.PrivateKey
 
 object SQLUtils {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def transactor[F[_]: Async](config: Config.Snowflake): Transactor[F] = {
-    val driver = "net.snowflake.client.jdbc.SnowflakeDriver"
-    val props = jdbcProperties(config)
-    Transactor.fromDriverManager[F](driver, config.url.getJdbcUrl, props, None)
-  }
+  private val driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
 
-  private def jdbcProperties(config: Config.Snowflake): Properties = {
+  def transactor[F[_]: Async](config: Config.Snowflake): F[Transactor[F]] =
+    for {
+      privateKey <- parsePrivateKey[F](config)
+      props = jdbcProperties(config, privateKey)
+    } yield Transactor.fromDriverManager[F](driver, config.url.getJdbcUrl, props, None)
+
+  private def parsePrivateKey[F[_]: Sync](config: Config.Snowflake): F[PrivateKey] =
+    Sync[F].delay { // Wrap in Sync because these can raise exceptions
+      config.privateKeyPassphrase match {
+        case Some(passphrase) =>
+          SnowflakeSdkUtils.parseEncryptedPrivateKey(config.privateKey, passphrase)
+        case None =>
+          SnowflakeSdkUtils.parsePrivateKey(config.privateKey)
+      }
+    }
+
+  private def jdbcProperties(config: Config.Snowflake, privateKey: PrivateKey): Properties = {
     val props = new Properties()
     props.setProperty("user", config.user)
-    props.put("privateKey", config.privateKey.resolved)
+    props.put("privateKey", privateKey)
     props.setProperty("timezone", "UTC")
     config.role.foreach(props.setProperty("role", _))
     props.put("loginTimeout", config.jdbcLoginTimeout.toSeconds.toInt)

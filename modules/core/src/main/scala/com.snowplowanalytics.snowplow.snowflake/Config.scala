@@ -12,9 +12,8 @@ import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
-import net.snowflake.ingest.utils.{SnowflakeURL, Utils => SnowflakeSdkUtils}
+import net.snowflake.ingest.utils.SnowflakeURL
 
-import java.security.{PrivateKey => JPrivateKey}
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
@@ -34,7 +33,8 @@ object Config {
   case class Snowflake(
     url: SnowflakeURL,
     user: String,
-    privateKey: PrivateKey,
+    privateKey: String,
+    privateKeyPassphrase: Option[String],
     role: Option[String],
     database: String,
     schema: String,
@@ -44,8 +44,6 @@ object Config {
     jdbcNetworkTimeout: FiniteDuration,
     jdbcQueryTimeout: FiniteDuration
   )
-
-  case class PrivateKey(raw: String, resolved: JPrivateKey)
 
   case class Metrics(
     statsd: Option[CommonMetrics.StatsdConfig]
@@ -86,10 +84,6 @@ object Config {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
       Try(new SnowflakeURL(str))
-    }
-    implicit val privateKeyDecoder = Decoder.decodeString.emapTry { str =>
-      Try(SnowflakeSdkUtils.parsePrivateKey(str))
-        .map(PrivateKey(str, _))
     }
     implicit val snowflake = deriveConfiguredDecoder[Snowflake]
     implicit val output = deriveConfiguredDecoder[Output[Sink]]

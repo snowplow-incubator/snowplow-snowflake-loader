@@ -150,7 +150,8 @@ object ChannelProvider {
   private def channelProperties(config: Config.Snowflake): Properties = {
     val props = new Properties()
     props.setProperty("user", config.user)
-    props.put("private_key", config.privateKey.raw)
+    props.setProperty("private_key", config.privateKey)
+    config.privateKeyPassphrase.foreach(props.setProperty("private_key_passphrase", _))
     config.role.foreach(props.setProperty("role", _))
     props.setProperty("url", config.url.getFullUrl)
     props.setProperty(ParameterProvider.ENABLE_SNOWPIPE_STREAMING_METRICS, "false")
