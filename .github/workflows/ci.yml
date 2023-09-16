@@ -45,6 +45,8 @@ jobs:
           password: ${{ secrets.DOCKER_PASSWORD }}
       - name: Stage the Docker build
         run: sbt "project ${{ matrix.app}}" docker:stage
+      - name: Stage the Docker Distroless build
+        run: sbt "project ${{ matrix.app}}Distroless" docker:stage
       - name: Docker metadata
         id: meta
         uses: docker/metadata-action@v3
@@ -55,6 +57,16 @@ jobs:
             type=raw,value=latest-focal,enable=${{ !contains(github.ref_name, 'rc') }}
             type=raw,value=${{ github.ref_name }}
             type=raw,value=${{ github.ref_name }}-focal
+          flavor: |
+            latest=false
+      - name: Docker metadata distroless
+        id: meta
+        uses: docker/metadata-action@v3
+        with:
+          images: "snowplow/snowflake-loader-${{ matrix.app }}"
+          tags: |
+            type=raw,value=latest-distroless,enable=${{ !contains(github.ref_name, 'rc') }}
+            type=raw,value=${{ github.ref_name }}-distroless
           flavor: |
             latest=false
       - name: Set up QEMU
@@ -69,14 +81,22 @@ jobs:
           platforms: linux/amd64,linux/arm64/v8
           tags: ${{ steps.meta.outputs.tags }}
           push: true
+      - name: Push distroless image
+        uses: docker/build-push-action@v2
+        with:
+          context: modules/distroless/${{ matrix.app }}/target/docker/stage
+          file: modules/distroless/${{ matrix.app }}/target/docker/stage/Dockerfile
+          platforms: linux/amd64,linux/arm64/v8
+          tags: ${{ steps.meta.outputs.tags }}
+          push: true
       - name: Build local image, which is needed to run Snyk
         # if: ${{ !contains(github.ref_name, 'rc') }} # TODO: uncomment before final release
-        run: sbt "project ${{ matrix.app }}" docker:publishLocal
+        run: sbt "project ${{ matrix.app }}Distroless" docker:publishLocal
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/docker@master
         # if: ${{ !contains(github.ref_name, 'rc') }} # TODO: uncomment before final release
         with:
-          image: "snowplow/snowflake-loader-${{ matrix.app }}:${{ github.ref_name }}"
+          image: "snowplow/snowflake-loader-${{ matrix.app }}:${{ github.ref_name }}-distroless"
           args: "--app-vulns --org=data-cap"
           command: monitor
         env:

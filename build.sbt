@@ -14,7 +14,9 @@ lazy val root = project.in(file("."))
     loadersCommon,
     core,
     azure,
-    gcp
+    azureDistroless,
+    gcp,
+    gcpDistroless
   )
 
 /* Common Snowplow internal modules, to become separate library */
@@ -58,12 +60,28 @@ lazy val azure: Project = project
   .dependsOn(core, kafka)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
+lazy val azureDistroless: Project = project
+  .in(file("modules/distroless/azure"))
+  .settings(BuildSettings.azureSettings)
+  .settings(libraryDependencies ++= Dependencies.azureDependencies)
+  .settings(sourceDirectory := (azure / sourceDirectory).value)
+  .dependsOn(core, kafka)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDistrolessDockerPlugin)
+
 lazy val gcp: Project = project
   .in(file("modules/gcp"))
   .settings(BuildSettings.gcpSettings)
   .settings(libraryDependencies ++= Dependencies.gcpDependencies)
   .dependsOn(core, pubsub)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
+
+lazy val gcpDistroless: Project = project
+  .in(file("modules/distroless/gcp"))
+  .settings(BuildSettings.gcpSettings)
+  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
+  .settings(sourceDirectory := (gcp / sourceDirectory).value)
+  .dependsOn(core, pubsub)
+  .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDistrolessDockerPlugin)
 
 
 ThisBuild / fork := true
