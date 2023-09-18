@@ -41,14 +41,12 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.InsertedRows(2),
-        Action.AddedGoodCountMetric(2),
+        Action.EnqueuedRows(2),
+        Action.EnqueuedRows(2),
+        Action.FlushedChannel,
+        Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack)),
-        Action.InsertedRows(2),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(1).ack))
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
       )
     )
 
@@ -60,18 +58,10 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.SentToBad(2),
+        Action.SentToBad(6),
         Action.AddedGoodCountMetric(0),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(0).ack)),
-        Action.SentToBad(2),
-        Action.AddedGoodCountMetric(0),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(1).ack)),
-        Action.SentToBad(2),
-        Action.AddedGoodCountMetric(0),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(2).ack))
+        Action.AddedBadCountMetric(6),
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
       )
     )
 
@@ -87,28 +77,21 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.InsertedRows(2),
-        Action.SentToBad(2),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(0).ack)),
-        Action.InsertedRows(2),
-        Action.SentToBad(2),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(1).ack)),
-        Action.InsertedRows(2),
-        Action.SentToBad(2),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(2),
-        Action.Checkpointed(List(inputs(2).ack))
+        Action.EnqueuedRows(2),
+        Action.EnqueuedRows(2),
+        Action.EnqueuedRows(2),
+        Action.FlushedChannel,
+        Action.SentToBad(6),
+        Action.AddedGoodCountMetric(6),
+        Action.AddedBadCountMetric(6),
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
       )
     )
 
   def e4 = {
     val mockedChannelResponses = List(
       List(
-        ChannelProvider.InsertFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+        ChannelProvider.EnqueueFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
       ),
       Nil
     )
@@ -120,10 +103,11 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.InsertedRows(1),
+        Action.EnqueuedRows(1),
         Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
         Action.ResetChannel,
-        Action.InsertedRows(1),
+        Action.EnqueuedRows(1),
+        Action.FlushedChannel,
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
         Action.Checkpointed(List(inputs(0).ack))
@@ -134,7 +118,7 @@ class ProcessingSpec extends Specification with CatsEffect {
   def e5 = {
     val mockedChannelResponses = List(
       List(
-        ChannelProvider.InsertFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+        ChannelProvider.EnqueueFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
       ),
       Nil
     )
@@ -146,7 +130,8 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.InsertedRows(1),
+        Action.EnqueuedRows(1),
+        Action.FlushedChannel,
         Action.SentToBad(1),
         Action.AddedGoodCountMetric(1),
         Action.AddedBadCountMetric(1),
@@ -158,7 +143,7 @@ class ProcessingSpec extends Specification with CatsEffect {
   def e6 = {
     val mockedChannelResponses = List(
       List(
-        ChannelProvider.InsertFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+        ChannelProvider.EnqueueFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
       ),
       Nil
     )
@@ -170,7 +155,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.InsertedRows(1)
+        Action.EnqueuedRows(1)
       )
     )
   }

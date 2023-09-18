@@ -22,6 +22,7 @@ import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics, Telemet
 case class Config[+Source, +Sink](
   input: Source,
   output: Config.Output[Sink],
+  batching: Config.Batching,
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring
 )
@@ -43,6 +44,12 @@ object Config {
     jdbcLoginTimeout: FiniteDuration,
     jdbcNetworkTimeout: FiniteDuration,
     jdbcQueryTimeout: FiniteDuration
+  )
+
+  case class Batching(
+    maxBytes: Long,
+    maxDelay: FiniteDuration,
+    uploadConcurrency: Int
   )
 
   case class Metrics(
@@ -87,6 +94,7 @@ object Config {
     }
     implicit val snowflake = deriveConfiguredDecoder[Snowflake]
     implicit val output = deriveConfiguredDecoder[Output[Sink]]
+    implicit val batching = deriveConfiguredDecoder[Batching]
     implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
     implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]

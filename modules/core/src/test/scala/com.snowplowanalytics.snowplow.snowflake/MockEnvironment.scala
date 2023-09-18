@@ -17,6 +17,8 @@ import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
 import com.snowplowanalytics.snowplow.loaders.AppInfo
 
+import scala.concurrent.duration.DurationInt
+
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
 object MockEnvironment {
@@ -27,7 +29,8 @@ object MockEnvironment {
     case class SentToBad(count: Int) extends Action
     case class AlterTableAddedColumns(columns: List[String]) extends Action
     case object ResetChannel extends Action
-    case class InsertedRows(rowCount: Int) extends Action
+    case object FlushedChannel extends Action
+    case class EnqueuedRows(rowCount: Int) extends Action
     case class AddedGoodCountMetric(count: Int) extends Action
     case class AddedBadCountMetric(count: Int) extends Action
   }
@@ -39,11 +42,11 @@ object MockEnvironment {
    * @param inputs
    *   Input events to send into the environment.
    * @param channelResponses
-   *   Responses we want the `ChannelProvider` to return when someone calls `insert`
+   *   Responses we want the `ChannelProvider` to return when someone calls `enqueue`
    * @return
    *   An environment and a Ref that records the actions make by the environment
    */
-  def build(inputs: List[TokenedEvents], channelResponses: List[List[ChannelProvider.InsertFailure]] = Nil): IO[MockEnvironment] =
+  def build(inputs: List[TokenedEvents], channelResponses: List[List[ChannelProvider.EnqueueFailure]] = Nil): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
       channelProvider <- testChannelProvider(state, channelResponses)
@@ -55,7 +58,12 @@ object MockEnvironment {
         httpClient = testHttpClient,
         tblManager = testTableManager(state),
         channelProvider = channelProvider,
-        metrics = testMetrics(state)
+        metrics = testMetrics(state),
+        batching = Config.Batching(
+          maxBytes = 16000000,
+          maxDelay = 10.seconds,
+          uploadConcurrency = 1
+        )
       )
       MockEnvironment(state, env)
     }
@@ -99,12 +107,12 @@ object MockEnvironment {
    * @param actionRef
    *   Global Ref used to accumulate actions that happened
    * @param responses
-   *   Responses that this mocked ChannelProvider should return each time someone calls `insert`. If
-   *   no responses given, then it will return with a successful response.
+   *   Responses that this mocked ChannelProvider should return each time someone calls `enqueue`.
+   *   If no responses given, then it will return with a successful response.
    */
   private def testChannelProvider(
     actionRef: Ref[IO, Vector[Action]],
-    responses: List[List[ChannelProvider.InsertFailure]]
+    responses: List[List[ChannelProvider.EnqueueFailure]]
   ): IO[ChannelProvider[IO]] =
     for {
       responseRef <- Ref[IO].of(responses)
@@ -112,14 +120,17 @@ object MockEnvironment {
       def reset: IO[Unit] =
         actionRef.update(_ :+ ResetChannel)
 
-      def insert(rows: Seq[Map[String, AnyRef]]): IO[List[ChannelProvider.InsertFailure]] =
+      def enqueue(rows: Seq[Map[String, AnyRef]]): IO[List[ChannelProvider.EnqueueFailure]] =
         for {
           response <- responseRef.modify {
                         case head :: tail => (tail, head)
                         case Nil => (Nil, Nil)
                       }
-          _ <- actionRef.update(_ :+ InsertedRows(rows.size - response.size))
+          _ <- actionRef.update(_ :+ EnqueuedRows(rows.size - response.size))
         } yield response
+
+      def flush: IO[Unit] =
+        actionRef.update(_ :+ FlushedChannel)
     }
 
   def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {

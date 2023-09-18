@@ -8,6 +8,7 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
+import cats.effect.implicits._
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.{Ref, Resource}
 import cats.effect.std.{Hotswap, Semaphore}
@@ -21,6 +22,7 @@ import net.snowflake.ingest.streaming.{
   SnowflakeStreamingIngestClient,
   SnowflakeStreamingIngestClientFactory
 }
+import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
 import net.snowflake.ingest.utils.{ParameterProvider, SFException}
 
 import com.snowplowanalytics.snowplow.snowflake.Config
@@ -40,14 +42,17 @@ trait ChannelProvider[F[_]] {
   def reset: F[Unit]
 
   /**
-   * Insert rows into Snowflake
+   * Enqueues rows to be sent to Snowflake
    *
    * @param rows
    *   The rows to be inserted
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def insert(rows: Seq[Map[String, AnyRef]]): F[List[ChannelProvider.InsertFailure]]
+  def enqueue(rows: Seq[Map[String, AnyRef]]): F[List[ChannelProvider.EnqueueFailure]]
+
+  /** Flush enqueued events */
+  def flush: F[Unit]
 }
 
 object ChannelProvider {
@@ -55,20 +60,23 @@ object ChannelProvider {
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   /**
-   * The result of trying to insert an event
+   * The result of trying to enqueue an event for sending to Snowflake
    * @param index
    *   Refers to the row number in the batch of attempted events
    * @param extraCols
    *   The column names which were present in the batch but missing in the table
    * @param cause
    *   The Snowflake exception, whose error code and message describes the reason for the failed
-   *   insert
+   *   enqueue
    */
-  case class InsertFailure(
+  case class EnqueueFailure(
     index: Long,
     extraCols: List[String],
     cause: SFException
   )
+
+  /** A large number so we don't limit the number of permits for calls to `flush` and `reset` */
+  private val allAvailablePermits: Long = Long.MaxValue
 
   def make[F[_]: Async](config: Config.Snowflake): Resource[F, ChannelProvider[F]] =
     for {
@@ -76,10 +84,10 @@ object ChannelProvider {
       hs <- Hotswap.create[F, SnowflakeStreamingIngestChannel]
       channel <- Resource.eval(hs.swap(createChannel(config, client)))
       ref <- Resource.eval(Ref[F].of(channel))
-      sem <- Resource.eval(Semaphore[F](1))
+      sem <- Resource.eval(Semaphore[F](allAvailablePermits))
     } yield impl(ref, hs, sem, createChannel(config, client))
 
-  private def impl[F[_]: Sync](
+  private def impl[F[_]: Async](
     ref: Ref[F, SnowflakeStreamingIngestChannel],
     hs: Hotswap[F, SnowflakeStreamingIngestChannel],
     sem: Semaphore[F],
@@ -87,7 +95,7 @@ object ChannelProvider {
   ): ChannelProvider[F] =
     new ChannelProvider[F] {
       def reset: F[Unit] =
-        sem.permit.use { _ =>
+        withAllPermits(sem) {
           Sync[F].uncancelable { _ =>
             for {
               _ <- hs.clear
@@ -97,18 +105,35 @@ object ChannelProvider {
           }
         }
 
-      def insert(rows: Seq[Map[String, AnyRef]]): F[List[InsertFailure]] =
+      def enqueue(rows: Seq[Map[String, AnyRef]]): F[List[EnqueueFailure]] =
         sem.permit.use { _ =>
           for {
             channel <- ref.get
             response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
           } yield parseResponse(response)
         }
+
+      def flush: F[Unit] =
+        sem.permit.use { _ =>
+          for {
+            channel <- ref.get
+            _ <- flushChannel[F](channel)
+          } yield ()
+        }
     }
 
-  private def parseResponse(response: InsertValidationResponse): List[InsertFailure] =
+  /** Wraps a `F[A]` so it only runs when no other fiber is using the channel at the same time */
+  private def withAllPermits[F[_]: Sync, A](sem: Semaphore[F])(f: F[A]): F[A] =
+    Sync[F].uncancelable { poll =>
+      for {
+        _ <- poll(sem.acquireN(allAvailablePermits))
+        a <- f.guarantee(sem.releaseN(allAvailablePermits))
+      } yield a
+    }
+
+  private def parseResponse(response: InsertValidationResponse): List[EnqueueFailure] =
     response.getInsertErrors.asScala.map { insertError =>
-      InsertFailure(
+      EnqueueFailure(
         insertError.getRowIndex,
         Option(insertError.getExtraColNames).fold(List.empty[String])(_.asScala.toList),
         insertError.getException
@@ -149,6 +174,15 @@ object ChannelProvider {
     config.role.foreach(props.setProperty("role", _))
     props.setProperty("url", config.url.getFullUrl)
     props.setProperty(ParameterProvider.ENABLE_SNOWPIPE_STREAMING_METRICS, "false")
+
+    // Disable SDK's background flushing because we manage it ourselves
+    props.setProperty(ParameterProvider.BUFFER_FLUSH_INTERVAL_IN_MILLIS, Long.MaxValue.toString)
+    props.setProperty(ParameterProvider.BUFFER_FLUSH_CHECK_INTERVAL_IN_MILLIS, Long.MaxValue.toString)
+    props.setProperty(ParameterProvider.INSERT_THROTTLE_INTERVAL_IN_MILLIS, "0")
+    props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_PERCENTAGE, "0")
+    props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_BYTES, "0")
+    props.setProperty(ParameterProvider.MAX_CHANNEL_SIZE_IN_BYTES, Long.MaxValue.toString)
+
     props
   }
 
@@ -157,10 +191,21 @@ object ChannelProvider {
       SnowflakeStreamingIngestClientFactory
         .builder("snowplow") // client name is not important
         .setProperties(channelProperties(config))
-        // .setParameterOverrides(Map.empty.asJava) // TODO: set param overrides
+        // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
         .build
     }
     Resource.fromAutoCloseable(make)
   }
+
+  /**
+   * Flushes the channel
+   *
+   * The public interface of the Snowflake SDK does not tell us when the events are safely written
+   * to Snowflake. So we must cast it to an Internal class so we get access to the `flush()` method.
+   */
+  private def flushChannel[F[_]: Async](channel: SnowflakeStreamingIngestChannel): F[Unit] =
+    Async[F].fromCompletableFuture {
+      Async[F].delay(SnowsFlakePlowInterop.flushChannel(channel))
+    }.void
 
 }

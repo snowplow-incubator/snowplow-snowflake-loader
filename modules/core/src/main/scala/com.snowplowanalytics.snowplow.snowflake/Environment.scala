@@ -26,7 +26,8 @@ case class Environment[F[_]](
   httpClient: Client[F],
   tblManager: TableManager[F],
   channelProvider: ChannelProvider[F],
-  metrics: Metrics[F]
+  metrics: Metrics[F],
+  batching: Config.Batching
 )
 
 object Environment {
@@ -53,7 +54,8 @@ object Environment {
       httpClient = httpClient,
       tblManager = tblManager,
       channelProvider = channelProvider,
-      metrics = metrics
+      metrics = metrics,
+      batching = config.batching
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =
