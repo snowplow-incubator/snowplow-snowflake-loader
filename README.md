@@ -1,4 +1,4 @@
-# Snowplow Lake Loader
+# Snowplow Snowflake Loader
 
 [![Build Status][build-image]][build]
 [![Release][release-image]][releases]
