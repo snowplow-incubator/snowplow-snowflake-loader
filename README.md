@@ -1,4 +1,11 @@
-# Snowplow Snowflake Loader
+
+> [!WARNING]
+> This loader is deprecated in favour of Snowplow's [RDB Loader](https://github.com/snowplow/snowplow-rdb-loader).
+
+> [!NOTE]
+> We still support Snowflake as a destination!! Check out [the Snowplow docs site](https://docs.snowplow.io/docs/pipeline-components-and-applications/loaders-storage-targets/snowplow-rdb-loader/?warehouse=snowflake) for how to load events into Snowflake with the RDB loader.
+
+# Snowplow Snowflake Loader [DEPRECATED]
 
 ## Overview
 
