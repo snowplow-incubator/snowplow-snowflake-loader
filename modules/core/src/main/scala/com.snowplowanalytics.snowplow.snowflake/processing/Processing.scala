@@ -130,7 +130,7 @@ object Processing {
               acc.copy(events = e :: acc.events, countBytes = acc.countBytes + bytes.size)
             case Left(failure) =>
               val payload = BadRowRawPayload(stringified)
-              val bad = BadRow.LoaderParsingError(badProcessor, failure, payload)
+              val bad     = BadRow.LoaderParsingError(badProcessor, failure, payload)
               acc.copy(bad = bad :: acc.bad, countBytes = acc.countBytes + bytes.size)
           }
         }
@@ -146,11 +146,11 @@ object Processing {
         result <- Stream.eval(transformBatch[F](badProcessor, events, loadTstamp))
         (moreBad, transformed) = result.separate
       } yield BatchAfterTransform(
-        toBeInserted = transformed.toVector,
+        toBeInserted   = transformed.toVector,
         origBatchBytes = bytes,
         badAccumulated = bad ::: moreBad,
-        countInserted = 0,
-        token = token
+        countInserted  = 0,
+        token          = token
       )
 
   private def transformBatch[F[_]: Monad](
@@ -196,9 +196,9 @@ object Processing {
             badRowFromEnqueueFailure(badProcessor, event, sfe)
           }
           batch.copy(
-            toBeInserted = folded.eventsWithExtraCols,
+            toBeInserted   = folded.eventsWithExtraCols,
             badAccumulated = moreBad ::: bad,
-            countInserted = events.size - notEnqueued.size
+            countInserted  = events.size - notEnqueued.size
           )
         }
     }
@@ -226,9 +226,9 @@ object Processing {
             badRowFromEnqueueFailure(badProcessor, event, sfe)
           }
           batch.copy(
-            toBeInserted = Vector.empty,
+            toBeInserted   = Vector.empty,
             badAccumulated = moreBad ::: bad,
-            countInserted = countInserted + events.size - notEnqueued.size
+            countInserted  = countInserted + events.size - notEnqueued.size
           )
         }
     }
@@ -302,7 +302,7 @@ object Processing {
   private def sendMetrics[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.chunks
       .evalTap { chunk =>
-        val countBad = chunk.foldLeft(0)(_ + _.badAccumulated.size)
+        val countBad  = chunk.foldLeft(0)(_ + _.badAccumulated.size)
         val countGood = chunk.foldLeft(0)(_ + _.countInserted)
         env.metrics.addGood(countGood) *> env.metrics.addBad(countBad)
       }
@@ -330,7 +330,7 @@ object Processing {
             _ <- go(next, Chunk.empty)
           } yield ()
         case Some((Right(pulled), next)) => // Received another batch before the timer timed out
-          val combined = unflushed ++ pulled
+          val combined     = unflushed ++ pulled
           val combinedSize = combined.foldLeft(0L)(_ + _.origBatchBytes)
           if (combinedSize > config.maxBytes)
             for {

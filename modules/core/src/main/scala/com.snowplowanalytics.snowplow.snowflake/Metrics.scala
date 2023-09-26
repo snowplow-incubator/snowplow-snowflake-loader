@@ -52,14 +52,14 @@ object Metrics {
   private object KVMetric {
 
     final case class CountGood(v: Int) extends CommonMetrics.KVMetric {
-      val key = "events_good"
-      val value = v.toString
+      val key        = "events_good"
+      val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
     }
 
     final case class CountBad(v: Int) extends CommonMetrics.KVMetric {
-      val key = "events_bad"
-      val value = v.toString
+      val key        = "events_bad"
+      val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
     }
 

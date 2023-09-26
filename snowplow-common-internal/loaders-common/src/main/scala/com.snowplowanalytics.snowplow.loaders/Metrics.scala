@@ -99,8 +99,8 @@ object Metrics {
         .flatMap { addr =>
           Sync[F].blocking {
             metrics.foreach { kv =>
-              val str = s"${prefix}.${kv.key}:${kv.value}|${kv.metricType.render}|#$tagStr".stripPrefix(".")
-              val bytes = str.getBytes(UTF_8)
+              val str    = s"${prefix}.${kv.key}:${kv.value}|${kv.metricType.render}|#$tagStr".stripPrefix(".")
+              val bytes  = str.getBytes(UTF_8)
               val packet = new DatagramPacket(bytes, bytes.length, addr, config.port)
               socket.send(packet)
             }

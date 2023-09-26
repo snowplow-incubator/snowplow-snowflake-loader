@@ -40,16 +40,16 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
 
     val config = EventProcessingConfig(EventProcessingConfig.NoWindowing)
 
-    val numBatchesToTest = (2.5 * BatchesPerRebalance).toInt // Enough to test two full rebalances
-    val durationToTest = numBatchesToTest * TimeBetweenBatches
+    val numBatchesToTest  = (2.5 * BatchesPerRebalance).toInt // Enough to test two full rebalances
+    val durationToTest    = numBatchesToTest * TimeBetweenBatches
     val expectedNumEvents = numBatchesToTest * EventsPerBatch
-    val expected = pureEvents.take(expectedNumEvents.toLong).compile.toList
+    val expected          = pureEvents.take(expectedNumEvents.toLong).compile.toList
 
     val io = for {
       refCheckpoints <- Ref[IO].of[List[List[String]]](Nil)
       refProcessed <- Ref[IO].of[List[String]](Nil)
       sourceAndAck = LowLevelSource.toSourceAndAck(testLowLevelSource(refCheckpoints))
-      processor = testProcessor(refProcessed)
+      processor    = testProcessor(refProcessed)
       fiber <- sourceAndAck.stream(config, processor).compile.drain.start
       _ <- IO.sleep(durationToTest)
       checkpointed <- refCheckpoints.get
@@ -70,15 +70,15 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
 
     val config = EventProcessingConfig(EventProcessingConfig.NoWindowing)
 
-    val durationToTest = 0.5 * TimeToProcessBatch // Not enough time to finish processing the first batch
+    val durationToTest    = 0.5 * TimeToProcessBatch // Not enough time to finish processing the first batch
     val expectedNumEvents = 1 * EventsPerBatch // Because the first batch should be allowed to finish
-    val expected = pureEvents.take(expectedNumEvents.toLong).compile.toList
+    val expected          = pureEvents.take(expectedNumEvents.toLong).compile.toList
 
     val io = for {
       refCheckpoints <- Ref[IO].of[List[List[String]]](Nil)
       refProcessed <- Ref[IO].of[List[String]](Nil)
       sourceAndAck = LowLevelSource.toSourceAndAck(testLowLevelSource(refCheckpoints))
-      processor = testProcessor(refProcessed)
+      processor    = testProcessor(refProcessed)
       fiber <- sourceAndAck.stream(config, processor).compile.drain.start
       _ <- IO.sleep(durationToTest) // Not enough time to finish processing the first batch
       _ <- fiber.cancel // This should wait for the first batch to finish processing
@@ -98,9 +98,9 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
 
     val config = EventProcessingConfig(EventProcessingConfig.NoWindowing)
 
-    val errorAfterBatch = 3
+    val errorAfterBatch   = 3
     val expectedNumEvents = 3 * EventsPerBatch
-    val expected = pureEvents.take(expectedNumEvents.toLong).compile.toList
+    val expected          = pureEvents.take(expectedNumEvents.toLong).compile.toList
 
     def badProcessor(ref: Ref[IO, List[String]]): EventProcessor[IO] =
       _.zipWithIndex
@@ -116,7 +116,7 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
     val io = for {
       refProcessed <- Ref[IO].of[List[String]](Nil)
       refCheckpoints <- Ref[IO].of[List[List[String]]](Nil)
-      processor = badProcessor(refProcessed)
+      processor    = badProcessor(refProcessed)
       sourceAndAck = LowLevelSource.toSourceAndAck(testLowLevelSource(refCheckpoints))
       result <- sourceAndAck.stream(config, processor).compile.drain.attempt
       checkpointed <- refCheckpoints.get
@@ -139,15 +139,15 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
 
     val durationToTest =
       (2 * BatchesPerRebalance + 1) * TimeBetweenBatches // so no time to process first window of the 3rd rebalance
-    val expectedNumEvents = 2 * BatchesPerRebalance * EventsPerBatch
+    val expectedNumEvents  = 2 * BatchesPerRebalance * EventsPerBatch
     val expectedNumWindows = 4
-    val expected = pureEvents.take(expectedNumEvents.toLong).compile.toList
+    val expected           = pureEvents.take(expectedNumEvents.toLong).compile.toList
 
     val io = for {
       refCheckpoints <- Ref[IO].of[List[List[String]]](Nil)
       refProcessed <- Ref[IO].of[List[String]](Nil)
       sourceAndAck = LowLevelSource.toSourceAndAck(testLowLevelSource(refCheckpoints))
-      processor = windowedProcessor(refProcessed)
+      processor    = windowedProcessor(refProcessed)
       fiber <- sourceAndAck.stream(config, processor).compile.drain.start
       _ <- IO.sleep(durationToTest)
       checkpointed <- refCheckpoints.get
@@ -168,15 +168,15 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
       (BatchesPerRebalance - 1) * TimeBetweenBatches - 1.milliseconds // so for each rebalance we get 1 full and 1 incomplete window
     val config = EventProcessingConfig(EventProcessingConfig.TimedWindows(windowDuration, 1.0))
 
-    val durationToTest = 1.5 * TimeBetweenBatches // Not enough time to finish an entire window
+    val durationToTest    = 1.5 * TimeBetweenBatches // Not enough time to finish an entire window
     val expectedNumEvents = 2 * EventsPerBatch // Because the first two batches should be allowed to finish
-    val expected = pureEvents.take(expectedNumEvents.toLong).compile.toList
+    val expected          = pureEvents.take(expectedNumEvents.toLong).compile.toList
 
     val io = for {
       refCheckpoints <- Ref[IO].of[List[List[String]]](Nil)
       refProcessed <- Ref[IO].of[List[String]](Nil)
       sourceAndAck = LowLevelSource.toSourceAndAck(testLowLevelSource(refCheckpoints))
-      processor = windowedProcessor(refProcessed)
+      processor    = windowedProcessor(refProcessed)
       fiber <- sourceAndAck.stream(config, processor).compile.drain.start
       _ <- IO.sleep(durationToTest) // Not enough time to finish processing the first batch
       _ <- fiber.cancel // This should wait for the first batch to finish processing
@@ -195,7 +195,7 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
   def e6 = {
 
     val windowDuration = 3 * TimeBetweenBatches
-    val config = EventProcessingConfig(EventProcessingConfig.TimedWindows(windowDuration, 1.0))
+    val config         = EventProcessingConfig(EventProcessingConfig.TimedWindows(windowDuration, 1.0))
 
     val badProcessor: EventProcessor[IO] =
       _.drain ++ Stream.raiseError[IO](new RuntimeException("boom!"))
@@ -222,10 +222,10 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
 
 object LowLevelSourceSpec {
 
-  val EventsPerBatch = 8
+  val EventsPerBatch      = 8
   val BatchesPerRebalance = 5
-  val TimeBetweenBatches = 20.seconds
-  val TimeToProcessBatch = 1.second
+  val TimeBetweenBatches  = 20.seconds
+  val TimeToProcessBatch  = 1.second
 
   /**
    * An EventProcessor which:

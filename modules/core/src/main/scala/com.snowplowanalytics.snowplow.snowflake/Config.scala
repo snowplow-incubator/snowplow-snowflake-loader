@@ -92,10 +92,10 @@ object Config {
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
       Try(new SnowflakeURL(str))
     }
-    implicit val snowflake = deriveConfiguredDecoder[Snowflake]
-    implicit val output = deriveConfiguredDecoder[Output[Sink]]
-    implicit val batching = deriveConfiguredDecoder[Batching]
-    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
+    implicit val snowflake     = deriveConfiguredDecoder[Snowflake]
+    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
+    implicit val batching      = deriveConfiguredDecoder[Batching]
+    implicit val telemetry     = deriveConfiguredDecoder[Telemetry.Config]
     implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
@@ -104,7 +104,7 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
+    implicit val metricsDecoder    = deriveConfiguredDecoder[Metrics]
     implicit val monitoringDecoder = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }

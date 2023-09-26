@@ -51,7 +51,7 @@ object KafkaSource {
       KafkaCheckpoints(x.byPartition |+| y.byPartition)
 
     val empty: KafkaCheckpoints[F] = KafkaCheckpoints(Map.empty)
-    def ack(c: KafkaCheckpoints[F]): F[Unit] = c.byPartition.values.toSeq.traverse_(_.commit)
+    def ack(c: KafkaCheckpoints[F]): F[Unit]  = c.byPartition.values.toSeq.traverse_(_.commit)
     def nack(c: KafkaCheckpoints[F]): F[Unit] = Applicative[F].unit
   }
 

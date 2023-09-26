@@ -39,10 +39,10 @@ object BuildSettings {
   )
 
   lazy val appSettings = Seq(
-      buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
-      buildInfoPackage := "com.snowplowanalytics.snowplow.snowflake",
-      buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.AppInfo"),
-    ) ++ commonSettings
+    buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
+    buildInfoPackage := "com.snowplowanalytics.snowplow.snowflake",
+    buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.AppInfo")
+  ) ++ commonSettings
 
   lazy val azureSettings = appSettings ++ Seq(
     name := "snowflake-loader-kinesis",
@@ -51,8 +51,7 @@ object BuildSettings {
 
   lazy val gcpSettings = appSettings ++ Seq(
     name := "snowflake-loader-pubsub",
-    buildInfoKeys += BuildInfoKey("cloud" -> "GCP"),
-
+    buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
 }

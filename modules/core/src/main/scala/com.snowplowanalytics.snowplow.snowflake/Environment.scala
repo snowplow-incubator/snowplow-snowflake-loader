@@ -48,14 +48,14 @@ object Environment {
       tblManager = TableManager.fromTransactor(config.output.good, xa)
       channelProvider <- ChannelProvider.make(config.output.good)
     } yield Environment(
-      appInfo = appInfo,
-      source = source(config.input),
-      badSink = badSink,
-      httpClient = httpClient,
-      tblManager = tblManager,
+      appInfo         = appInfo,
+      source          = source(config.input),
+      badSink         = badSink,
+      httpClient      = httpClient,
+      tblManager      = tblManager,
       channelProvider = channelProvider,
-      metrics = metrics,
-      batching = config.batching
+      metrics         = metrics,
+      batching        = config.batching
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =
@@ -73,7 +73,7 @@ object Environment {
 
         Resource.makeCase(acquire) {
           case (_, Resource.ExitCase.Errored(e)) => Sync[F].delay(Sentry.captureException(e)).void
-          case _ => Sync[F].unit
+          case _                                 => Sync[F].unit
         }
       case None =>
         Resource.unit[F]

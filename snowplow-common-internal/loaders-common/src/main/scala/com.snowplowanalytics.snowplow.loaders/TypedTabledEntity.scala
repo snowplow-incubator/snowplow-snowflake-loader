@@ -73,7 +73,7 @@ object TypedTabledEntity {
               val hash = abs(field.hashCode())
               // typedField always has a single element in matchingKeys
               val recoverPoint = schemaKey.version.asString.replaceAll("-", "_")
-              val newName = s"${field.name}_recovered_${recoverPoint}_$hash"
+              val newName      = s"${field.name}_recovered_${recoverPoint}_$hash"
               columnGroup.copy(recoveries = columnGroup.recoveries + (subversion -> field.copy(name = newName)))
             } else {
               // do not create a recovered column if that type were not in the batch
@@ -88,7 +88,7 @@ object TypedTabledEntity {
   private def fieldFromSchema(tabledEntity: TabledEntity, schema: Schema): Field = {
     val sdkEntityType = tabledEntity.entityType match {
       case TabledEntity.UnstructEvent => SdkData.UnstructEvent
-      case TabledEntity.Context => SdkData.Contexts(SdkData.CustomContexts)
+      case TabledEntity.Context       => SdkData.Contexts(SdkData.CustomContexts)
     }
     val fieldName = SnowplowEvent.transformSchema(sdkEntityType, tabledEntity.vendor, tabledEntity.schemaName, tabledEntity.model)
 

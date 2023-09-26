@@ -46,42 +46,41 @@ object Dependencies {
 
   }
 
-  val catsEffectKernel  = "org.typelevel"              %% "cats-effect-kernel"         % V.catsEffect
-  val cats              = "org.typelevel"              %% "cats-core"                  % V.cats
-  val fs2               = "co.fs2"                     %% "fs2-core"                   % V.fs2
-  val log4cats          = "org.typelevel"              %% "log4cats-slf4j"             % V.log4cats
-  val catsRetry         = "com.github.cb372"           %% "cats-retry"                 % V.catsRetry
-  val blazeClient       = "org.http4s"                 %% "http4s-blaze-client"        % V.http4s
-  val decline           = "com.monovore"               %% "decline-effect"             % V.decline
-  val circeConfig       = "io.circe"                   %% "circe-config"               % V.circeConfig
-  val circeGeneric      = "io.circe"                   %% "circe-generic"              % V.circe
-  val circeGenericExtra = "io.circe"                   %% "circe-generic-extras"       % V.circe
-  val betterMonadicFor  = "com.olegpy"                 %% "better-monadic-for"         % V.betterMonadicFor
-  val doobie            = "org.tpolecat"               %% "doobie-core"                % V.doobie
+  val catsEffectKernel  = "org.typelevel"    %% "cats-effect-kernel"   % V.catsEffect
+  val cats              = "org.typelevel"    %% "cats-core"            % V.cats
+  val fs2               = "co.fs2"           %% "fs2-core"             % V.fs2
+  val log4cats          = "org.typelevel"    %% "log4cats-slf4j"       % V.log4cats
+  val catsRetry         = "com.github.cb372" %% "cats-retry"           % V.catsRetry
+  val blazeClient       = "org.http4s"       %% "http4s-blaze-client"  % V.http4s
+  val decline           = "com.monovore"     %% "decline-effect"       % V.decline
+  val circeConfig       = "io.circe"         %% "circe-config"         % V.circeConfig
+  val circeGeneric      = "io.circe"         %% "circe-generic"        % V.circe
+  val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
+  val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
+  val doobie            = "org.tpolecat"     %% "doobie-core"          % V.doobie
 
   // streams
-  val fs2Kafka          = "com.github.fd4s"            %% "fs2-kafka"                  % V.fs2Kafka
-  val pubsub            = "com.google.cloud"           % "google-cloud-pubsub"         % V.pubsub
+  val fs2Kafka = "com.github.fd4s" %% "fs2-kafka"           % V.fs2Kafka
+  val pubsub   = "com.google.cloud" % "google-cloud-pubsub" % V.pubsub
 
   // java
-  val slf4j             = "org.slf4j"                  % "slf4j-simple"                % V.slf4j
-  val azureIdentity     = "com.azure"                  % "azure-identity"              % V.azureSdk
-  val sentry            = "io.sentry"                  % "sentry"                      % V.sentry
-  val snowflakeIngest   = "net.snowflake"              % "snowflake-ingest-sdk"        % V.snowflake
-  val jaxb              = "javax.xml.bind"             % "jaxb-api"                    % V.jaxb
+  val slf4j           = "org.slf4j"      % "slf4j-simple"         % V.slf4j
+  val azureIdentity   = "com.azure"      % "azure-identity"       % V.azureSdk
+  val sentry          = "io.sentry"      % "sentry"               % V.sentry
+  val snowflakeIngest = "net.snowflake"  % "snowflake-ingest-sdk" % V.snowflake
+  val jaxb            = "javax.xml.bind" % "jaxb-api"             % V.jaxb
 
   // snowplow: Note jackson-databind 2.14.x is incompatible with Spark
-  val badrows           = "com.snowplowanalytics"      %% "snowplow-badrows"                      % V.badrows
-  val tracker           = "com.snowplowanalytics"      %% "snowplow-scala-tracker-core"           % V.tracker
-  val trackerEmit       = "com.snowplowanalytics"      %% "snowplow-scala-tracker-emitter-http4s" % V.tracker
-  val schemaDdl         = ("com.snowplowanalytics"      %% "schema-ddl"               % V.schemaDdl)
-  val igluClient        = ("com.snowplowanalytics"      %% "iglu-scala-client"        % V.igluClient)
+  val badrows     = "com.snowplowanalytics" %% "snowplow-badrows"                      % V.badrows
+  val tracker     = "com.snowplowanalytics" %% "snowplow-scala-tracker-core"           % V.tracker
+  val trackerEmit = "com.snowplowanalytics" %% "snowplow-scala-tracker-emitter-http4s" % V.tracker
+  val schemaDdl   = "com.snowplowanalytics" %% "schema-ddl"                            % V.schemaDdl
+  val igluClient  = "com.snowplowanalytics" %% "iglu-scala-client"                     % V.igluClient
 
   // tests
-  val specs2            = "org.specs2"                 %% "specs2-core"                % V.specs2            % Test
-  val catsEffectTestkit = "org.typelevel"              %% "cats-effect-testkit"        % V.catsEffect        % Test
-  val catsEffectSpecs2  = "org.typelevel"              %% "cats-effect-testing-specs2" % V.catsEffectSpecs2  % Test
-
+  val specs2            = "org.specs2"    %% "specs2-core"                % V.specs2           % Test
+  val catsEffectTestkit = "org.typelevel" %% "cats-effect-testkit"        % V.catsEffect       % Test
+  val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
 
   val streamsDependencies = Seq(
     cats,
@@ -98,7 +97,7 @@ object Dependencies {
   val kafkaDependencies = Seq(
     fs2Kafka,
     circeConfig,
-    circeGeneric,
+    circeGeneric
   )
 
   val pubsubDependencies = Seq(
@@ -138,12 +137,12 @@ object Dependencies {
 
   val azureDependencies = Seq(
     slf4j % Runtime,
-    jaxb % Runtime,
-    azureIdentity,
+    jaxb  % Runtime,
+    azureIdentity
   )
 
   val gcpDependencies = Seq(
-    jaxb % Runtime,
+    jaxb  % Runtime,
     slf4j % Runtime
   )
 

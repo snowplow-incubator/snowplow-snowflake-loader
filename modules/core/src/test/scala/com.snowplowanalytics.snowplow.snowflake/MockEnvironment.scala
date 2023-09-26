@@ -52,16 +52,16 @@ object MockEnvironment {
       channelProvider <- testChannelProvider(state, channelResponses)
     } yield {
       val env = Environment(
-        appInfo = appInfo,
-        source = testSourceAndAck(inputs, state),
-        badSink = testSink(state),
-        httpClient = testHttpClient,
-        tblManager = testTableManager(state),
+        appInfo         = appInfo,
+        source          = testSourceAndAck(inputs, state),
+        badSink         = testSink(state),
+        httpClient      = testHttpClient,
+        tblManager      = testTableManager(state),
         channelProvider = channelProvider,
-        metrics = testMetrics(state),
+        metrics         = testMetrics(state),
         batching = Config.Batching(
-          maxBytes = 16000000,
-          maxDelay = 10.seconds,
+          maxBytes          = 16000000,
+          maxDelay          = 10.seconds,
           uploadConcurrency = 1
         )
       )
@@ -69,10 +69,10 @@ object MockEnvironment {
     }
 
   val appInfo = new AppInfo {
-    def name = "snowflake-loader-test"
-    def version = "0.0.0"
+    def name        = "snowflake-loader-test"
+    def version     = "0.0.0"
     def dockerAlias = "snowplow/snowflake-loader-test:0.0.0"
-    def cloud = "OnPrem"
+    def cloud       = "OnPrem"
   }
 
   private def testTableManager(state: Ref[IO, Vector[Action]]): TableManager[IO] = new TableManager[IO] {
@@ -124,7 +124,7 @@ object MockEnvironment {
         for {
           response <- responseRef.modify {
                         case head :: tail => (tail, head)
-                        case Nil => (Nil, Nil)
+                        case Nil          => (Nil, Nil)
                       }
           _ <- actionRef.update(_ :+ EnqueuedRows(rows.size - response.size))
         } yield response

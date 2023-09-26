@@ -16,7 +16,7 @@ object LogUtils {
     def causes(e: Throwable): List[String] =
       Option(e.getCause) match {
         case Some(e) => s"caused by: ${e.getMessage}" :: causes(e)
-        case None => Nil
+        case None    => Nil
       }
 
     val msg = e.getMessage :: causes(e)

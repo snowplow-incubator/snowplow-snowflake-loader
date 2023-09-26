@@ -32,9 +32,9 @@ object Checkpointer {
   /** A simple implementation that does ack only and no nacks */
   def acksOnly[F[_]: Applicative, C: Monoid](f: C => F[Unit]): Checkpointer[F, C] =
     new Checkpointer[F, C] {
-      override def ack(c: C): F[Unit] = f(c)
-      override def nack(c: C): F[Unit] = Applicative[F].unit
-      override def empty: C = Monoid[C].empty
+      override def ack(c: C): F[Unit]     = f(c)
+      override def nack(c: C): F[Unit]    = Applicative[F].unit
+      override def empty: C               = Monoid[C].empty
       override def combine(x: C, y: C): C = Monoid[C].combine(x, y)
     }
 

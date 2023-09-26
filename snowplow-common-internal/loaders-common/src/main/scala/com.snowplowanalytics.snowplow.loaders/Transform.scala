@@ -138,7 +138,7 @@ object Transform {
   ): ValidatedNel[FailureDetails.LoaderIgluError, Caster.NamedValue[A]] = {
     val result = te.entityType match {
       case TabledEntity.UnstructEvent => forUnstruct(caster, te, field, subVersions, event)
-      case TabledEntity.Context => forContexts(caster, te, field, subVersions, event)
+      case TabledEntity.Context       => forContexts(caster, te, field, subVersions, event)
     }
     result
       .map { fieldValue =>
@@ -200,7 +200,7 @@ object Transform {
     castErrors: NonEmptyList[CastError]
   ): NonEmptyList[FailureDetails.LoaderIgluError] =
     castErrors.map {
-      case CastError.WrongType(v, e) => FailureDetails.LoaderIgluError.WrongType(schemaKey, v, e.toString)
+      case CastError.WrongType(v, e)      => FailureDetails.LoaderIgluError.WrongType(schemaKey, v, e.toString)
       case CastError.MissingInValue(k, v) => FailureDetails.LoaderIgluError.MissingInValue(schemaKey, k, v)
     }
 

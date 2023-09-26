@@ -25,7 +25,7 @@ abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   override def runtimeConfig =
     super.runtimeConfig.copy(cpuStarvationCheckInterval = 10.seconds)
 
-  type SinkProvider = SinkConfig => Resource[IO, Sink[IO]]
+  type SinkProvider   = SinkConfig => Resource[IO, Sink[IO]]
   type SourceProvider = SourceConfig => SourceAndAck[IO]
 
   def source: SourceProvider

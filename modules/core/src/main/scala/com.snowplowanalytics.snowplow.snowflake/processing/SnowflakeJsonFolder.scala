@@ -15,7 +15,7 @@ import scala.jdk.CollectionConverters._
 /** Converts circe Json values into objects which are compatible with the snowflake ingest sdk */
 object SnowflakeJsonFolder extends Json.Folder[AnyRef] {
 
-  override def onNull: Null = null
+  override def onNull: Null                                 = null
   override def onBoolean(value: Boolean): java.lang.Boolean = Boolean.box(value)
   override def onNumber(value: JsonNumber): AnyRef =
     tryBigInt(value).orElse(tryBigDecimal(value)).getOrElse(Double.box(value.toDouble))

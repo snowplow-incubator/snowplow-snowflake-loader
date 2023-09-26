@@ -48,14 +48,14 @@ object TableManager {
   }
 
   private val reUnstruct: Regex = "^unstruct_event_.*$".r
-  private val reContext: Regex = "^contexts_.*$".r
+  private val reContext: Regex  = "^contexts_.*$".r
 
   private def sqlAlterTable(config: Config.Snowflake, colName: String): Fragment = {
     val tableName = SQLUtils.fqTableName(config)
     val colType = colName match {
       case reUnstruct() => "OBJECT"
-      case reContext() => "ARRAY"
-      case other => throw new IllegalStateException(s"Cannot alter table to add column $other")
+      case reContext()  => "ARRAY"
+      case other        => throw new IllegalStateException(s"Cannot alter table to add column $other")
     }
     val colTypeFrag = Fragment.const0(colType)
     val colNameFrag = Fragment.const0(colName)

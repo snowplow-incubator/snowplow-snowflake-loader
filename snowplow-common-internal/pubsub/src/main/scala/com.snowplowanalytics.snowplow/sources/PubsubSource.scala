@@ -90,7 +90,7 @@ object PubsubSource {
         .chunks
         .map { chunk =>
           val events = chunk.map(_.message).toList
-          val acks = chunk.map(_.ackReply).toList
+          val acks   = chunk.map(_.ackReply).toList
           LowLevelEvents(events, acks)
         }
         .evalTap { case LowLevelEvents(events, _) =>
@@ -117,7 +117,7 @@ object PubsubSource {
     semaphore: Semaphore[F],
     sig: Deferred[F, Either[Throwable, Unit]]
   ): Stream[F, Unit] = {
-    val name = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
+    val name     = ProjectSubscriptionName.of(config.subscription.projectId, config.subscription.subscriptionId)
     val receiver = messageReceiver(queue, dispatcher, semaphore, sig)
 
     for {
@@ -131,7 +131,7 @@ object PubsubSource {
                         .setParallelPullCount(config.parallelPullCount)
                         .setExecutorProvider {
                           new ExecutorProvider {
-                            def shouldAutoClose: Boolean = true
+                            def shouldAutoClose: Boolean              = true
                             def getExecutor: ScheduledExecutorService = executor
                           }
                         }
@@ -193,7 +193,7 @@ object PubsubSource {
     }
 
   private def scheduledExecutorService: ScheduledExecutorService = new ForwardingListeningExecutorService with ScheduledExecutorService {
-    val delegate = MoreExecutors.newDirectExecutorService
+    val delegate       = MoreExecutors.newDirectExecutorService
     lazy val scheduler = new ScheduledThreadPoolExecutor(1) // I think this scheduler is never used, but I implement it here for safety
     override def schedule[V](
       callable: Callable[V],

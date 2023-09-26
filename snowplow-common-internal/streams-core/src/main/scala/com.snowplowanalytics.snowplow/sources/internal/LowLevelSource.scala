@@ -139,7 +139,7 @@ private[sources] object LowLevelSource {
               }
               .flatMap {
                 case Some(c) => Async[F].pure(c)
-                case None => Async[F].raiseError[C](new IllegalStateException("Missing checkpoint for token"))
+                case None    => Async[F].raiseError[C](new IllegalStateException("Missing checkpoint for token"))
               }
           }
           .flatMap { cs =>
@@ -156,7 +156,7 @@ private[sources] object LowLevelSource {
 
   private def windowed[F[_]: Async, A](config: EventProcessingConfig.Windowing): Pipe[F, A, Stream[F, A]] =
     config match {
-      case EventProcessingConfig.NoWindowing => in => Stream.emit(in)
+      case EventProcessingConfig.NoWindowing      => in => Stream.emit(in)
       case tw: EventProcessingConfig.TimedWindows => timedWindows(tw)
     }
 
@@ -174,14 +174,14 @@ private[sources] object LowLevelSource {
       timedPull.uncons.flatMap {
         case None =>
           current match {
-            case None => Pull.done
+            case None    => Pull.done
             case Some(q) => Pull.eval(q.offer(None)) >> Pull.done
           }
         case Some((Left(_), next)) =>
           val openWindow =
             Pull.eval(Logger[F].info(s"Opening new window with duration ${config.duration}")) >> next.timeout(config.duration)
           current match {
-            case None => openWindow >> go(next, None)
+            case None    => openWindow >> go(next, None)
             case Some(q) => openWindow >> Pull.eval(q.offer(None)) >> go(next, None)
           }
         case Some((Right(chunk), next)) =>

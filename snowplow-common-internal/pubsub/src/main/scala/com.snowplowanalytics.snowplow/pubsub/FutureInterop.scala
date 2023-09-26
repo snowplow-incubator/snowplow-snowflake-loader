@@ -30,7 +30,7 @@ object FutureInterop {
   private def addCallback[A](fut: ApiFuture[A], cb: Either[Throwable, A] => Unit): Unit = {
     val apiFutureCallback = new ApiFutureCallback[A] {
       def onFailure(t: Throwable): Unit = cb(Left(t))
-      def onSuccess(result: A): Unit = cb(Right(result))
+      def onSuccess(result: A): Unit    = cb(Right(result))
     }
     ApiFutures.addCallback(fut, apiFutureCallback, MoreExecutors.directExecutor)
   }
