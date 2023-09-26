@@ -9,15 +9,11 @@ package com.snowplowanalytics.snowplow.sinks
 
 import io.circe.Decoder
 import io.circe.generic.semiauto._
-import io.circe.config.syntax._
-
-import scala.concurrent.duration.FiniteDuration
 
 case class PubsubSinkConfig(
   topic: PubsubSinkConfig.Topic,
   batchSize: Long,
-  requestByteThreshold: Long,
-  delayThreshold: FiniteDuration
+  requestByteThreshold: Long
 )
 
 object PubsubSinkConfig {

@@ -14,6 +14,7 @@ import cats.effect.testing.specs2.CatsEffect
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 
 import java.nio.charset.StandardCharsets
+import java.nio.ByteBuffer
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment
@@ -175,7 +176,7 @@ object ProcessingSpec {
         val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
         val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
         val serialized = List(event1, event2).map { e =>
-          e.toTsv.getBytes(StandardCharsets.UTF_8)
+          ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
         }
         TokenedEvents(serialized, ack)
       }
@@ -184,7 +185,7 @@ object ProcessingSpec {
   def generateBadlyFormatted: Stream[IO, TokenedEvents] =
     Stream.eval {
       IO.unique.map { token =>
-        val serialized = List("nonsense1", "nonsense2").map(_.getBytes(StandardCharsets.UTF_8))
+        val serialized = List("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
         TokenedEvents(serialized, token)
       }
     }.repeat

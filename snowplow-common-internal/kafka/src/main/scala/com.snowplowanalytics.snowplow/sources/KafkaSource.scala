@@ -10,13 +10,17 @@ package com.snowplowanalytics.snowplow.sources
 import cats.Applicative
 import cats.kernel.Semigroup
 import cats.implicits._
-import cats.effect.{Async, Sync}
+import cats.effect.{Async, Resource, Sync}
+
 import fs2.Stream
+
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import java.nio.ByteBuffer
+
 // kafka
-import fs2.kafka.{CommittableConsumerRecord, ConsumerSettings, KafkaConsumer}
+import fs2.kafka._
 import org.apache.kafka.common.TopicPartition
 
 // snowplow
@@ -65,7 +69,7 @@ object KafkaSource {
           .map(joinPartitions[F](_))
       }
 
-  private type PartitionedStreams[F[_]] = Map[TopicPartition, Stream[F, CommittableConsumerRecord[F, Array[Byte], Array[Byte]]]]
+  private type PartitionedStreams[F[_]] = Map[TopicPartition, Stream[F, CommittableConsumerRecord[F, Array[Byte], ByteBuffer]]]
 
   private def joinPartitions[F[_]: Async](
     partitioned: PartitionedStreams[F]
@@ -112,13 +116,16 @@ object KafkaSource {
       .sorted
       .mkString(",")
 
-  private def consumerSettings[F[_]: Async](config: KafkaSourceConfig): ConsumerSettings[F, Array[Byte], Array[Byte]] =
-    ConsumerSettings[F, Array[Byte], Array[Byte]]
+  private implicit def byteBufferDeserializer[F[_]: Sync]: Resource[F, ValueDeserializer[F, ByteBuffer]] =
+    Resource.pure(Deserializer.lift(arr => Sync[F].pure(ByteBuffer.wrap(arr))))
+
+  private def consumerSettings[F[_]: Async](config: KafkaSourceConfig): ConsumerSettings[F, Array[Byte], ByteBuffer] =
+    ConsumerSettings[F, Array[Byte], ByteBuffer]
       .withBootstrapServers(config.bootstrapServers)
       .withProperties(config.consumerConf)
       .withEnableAutoCommit(false)
       .withProperties(
         ("key.deserializer", "org.apache.kafka.common.serialization.ByteArrayDeserializer"),
-        ("value.deserializer", "org.apache.kafka.common.serialization.ByteArrayDeserializer")
+        ("value.deserializer", "org.apache.kafka.common.serialization.ByteBufferDeserializer")
       )
 }

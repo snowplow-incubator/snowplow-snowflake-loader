@@ -124,14 +124,15 @@ object Processing {
     _.evalMap { case TokenedEvents(list, token) =>
       Foldable[List].foldM(list, ParsedBatch(Nil, Nil, 0L, token)) { case (acc, bytes) =>
         Applicative[F].pure {
-          val stringified = new String(bytes, StandardCharsets.UTF_8)
+          val bytesSize   = bytes.capacity
+          val stringified = StandardCharsets.UTF_8.decode(bytes).toString
           Event.parse(stringified).toEither match {
             case Right(e) =>
-              acc.copy(events = e :: acc.events, countBytes = acc.countBytes + bytes.size)
+              acc.copy(events = e :: acc.events, countBytes = acc.countBytes + bytesSize)
             case Left(failure) =>
               val payload = BadRowRawPayload(stringified)
               val bad     = BadRow.LoaderParsingError(badProcessor, failure, payload)
-              acc.copy(bad = bad :: acc.bad, countBytes = acc.countBytes + bytes.size)
+              acc.copy(bad = bad :: acc.bad, countBytes = acc.countBytes + bytesSize)
           }
         }
       }

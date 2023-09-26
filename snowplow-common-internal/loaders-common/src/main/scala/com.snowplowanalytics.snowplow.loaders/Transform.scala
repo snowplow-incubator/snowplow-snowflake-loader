@@ -123,7 +123,7 @@ object Transform {
   ): ValidatedNel[FailureDetails.LoaderIgluError, List[Caster.NamedValue[A]]] =
     entities.flatMap { case TypedTabledEntity(entity, field, subVersions, recoveries) =>
       val head = forEntity(caster, entity, field, subVersions, event)
-      val tail = recoveries.toList.map { case (recoveryVersion, recoveryField) =>
+      val tail = recoveries.map { case (recoveryVersion, recoveryField) =>
         forEntity(caster, entity, recoveryField, Set(recoveryVersion), event)
       }
       head :: tail

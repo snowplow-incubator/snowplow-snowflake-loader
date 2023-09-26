@@ -37,7 +37,7 @@ case class TypedTabledEntity(
   tabledEntity: TabledEntity,
   mergedField: Field,
   mergedVersions: Set[SchemaSubVersion],
-  recoveries: Map[SchemaSubVersion, Field]
+  recoveries: List[(SchemaSubVersion, Field)]
 )
 
 object TypedTabledEntity {
@@ -61,11 +61,9 @@ object TypedTabledEntity {
   ): TypedTabledEntity = {
     // Schemas need to be ordered by key to merge in correct order.
     val NonEmptyList(root, tail) = schemas.sorted
-    val columnGroup =
-      TypedTabledEntity(tabledEntity, fieldFromSchema(tabledEntity, root.schema), Set(keyToSubVersion(root.schemaKey)), Map.empty)
-    tail
+    val tte = tail
       .map(schemaWithKey => (fieldFromSchema(tabledEntity, schemaWithKey.schema), schemaWithKey.schemaKey))
-      .foldLeft(columnGroup) { case (columnGroup, (field, schemaKey)) =>
+      .foldLeft(initColumnGroup(tabledEntity, root)) { case (columnGroup, (field, schemaKey)) =>
         val subversion = keyToSubVersion(schemaKey)
         Migrations.mergeSchemas(columnGroup.mergedField, field) match {
           case Left(_) =>
@@ -74,7 +72,7 @@ object TypedTabledEntity {
               // typedField always has a single element in matchingKeys
               val recoverPoint = schemaKey.version.asString.replaceAll("-", "_")
               val newName      = s"${field.name}_recovered_${recoverPoint}_$hash"
-              columnGroup.copy(recoveries = columnGroup.recoveries + (subversion -> field.copy(name = newName)))
+              columnGroup.copy(recoveries = (subversion -> field.copy(name = newName)) :: columnGroup.recoveries)
             } else {
               // do not create a recovered column if that type were not in the batch
               columnGroup
@@ -83,7 +81,11 @@ object TypedTabledEntity {
             columnGroup.copy(mergedField = mergedField, mergedVersions = columnGroup.mergedVersions + subversion)
         }
       }
+    tte.copy(recoveries = tte.recoveries.reverse)
   }
+
+  private def initColumnGroup(tabledEntity: TabledEntity, root: SchemaWithKey): TypedTabledEntity =
+    TypedTabledEntity(tabledEntity, fieldFromSchema(tabledEntity, root.schema), Set(keyToSubVersion(root.schemaKey)), Nil)
 
   private def fieldFromSchema(tabledEntity: TabledEntity, schema: Schema): Field = {
     val sdkEntityType = tabledEntity.entityType match {

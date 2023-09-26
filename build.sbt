@@ -12,6 +12,7 @@ lazy val root = project
     streams,
     kafka,
     pubsub,
+    kinesis,
     loadersCommon,
     core,
     azure,
@@ -37,6 +38,12 @@ lazy val pubsub: Project = project
   .in(file("snowplow-common-internal/pubsub"))
   .settings(BuildSettings.commonSettings)
   .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
+  .dependsOn(streams)
+
+lazy val kinesis: Project = project
+  .in(file("snowplow-common-internal/kinesis"))
+  .settings(BuildSettings.commonSettings)
+  .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
   .dependsOn(streams)
 
 lazy val loadersCommon: Project = project

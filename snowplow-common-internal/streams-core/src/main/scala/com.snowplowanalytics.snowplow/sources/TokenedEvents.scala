@@ -9,6 +9,8 @@ package com.snowplowanalytics.snowplow.sources
 
 import cats.effect.kernel.Unique
 
+import java.nio.ByteBuffer
+
 /**
  * The events as they are fed into a [[EventProcessor]]
  *
@@ -19,4 +21,4 @@ import cats.effect.kernel.Unique
  *   When the [[EventProcessor]] emits the token, it is an instruction to the [[SourceAndAck]] to
  *   ack/checkpoint the events.
  */
-case class TokenedEvents(events: List[Array[Byte]], ack: Unique.Token)
+case class TokenedEvents(events: List[ByteBuffer], ack: Unique.Token)

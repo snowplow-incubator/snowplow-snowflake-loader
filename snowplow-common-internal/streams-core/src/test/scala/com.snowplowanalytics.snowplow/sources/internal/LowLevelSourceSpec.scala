@@ -16,9 +16,11 @@ import org.specs2.Specification
 import org.specs2.matcher.Matcher
 
 import scala.concurrent.duration.DurationInt
-import java.nio.charset.StandardCharsets
 
+import java.nio.charset.StandardCharsets
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
+
+import java.nio.ByteBuffer
 
 class LowLevelSourceSpec extends Specification with CatsEffect {
   import LowLevelSourceSpec._
@@ -109,7 +111,7 @@ class LowLevelSourceSpec extends Specification with CatsEffect {
             IO.raiseError(new RuntimeException(s"boom! Exceeded $errorAfterBatch batches"))
           else
             ref
-              .update(_ ::: events.map(bytes => new String(bytes, StandardCharsets.UTF_8)))
+              .update(_ ::: events.map(byteBuffer => StandardCharsets.UTF_8.decode(byteBuffer).toString))
               .as(token)
         }
 
@@ -237,7 +239,7 @@ object LowLevelSourceSpec {
     _.evalMap { case TokenedEvents(events, token) =>
       for {
         _ <- IO.sleep(TimeToProcessBatch)
-        _ <- ref.update(_ ::: events.map(bytes => new String(bytes, StandardCharsets.UTF_8)))
+        _ <- ref.update(_ ::: events.map(byteBuffer => StandardCharsets.UTF_8.decode(byteBuffer).toString))
       } yield token
     }
 
@@ -252,7 +254,7 @@ object LowLevelSourceSpec {
       val out = in.evalMap { case TokenedEvents(events, token) =>
         for {
           _ <- IO.sleep(TimeToProcessBatch)
-          _ <- ref.update(_ ::: events.map(bytes => new String(bytes, StandardCharsets.UTF_8)))
+          _ <- ref.update(_ ::: events.map(byteBuffer => StandardCharsets.UTF_8.decode(byteBuffer).toString))
           _ <- checkpoints.update(token :: _)
         } yield ()
       }
@@ -279,7 +281,7 @@ object LowLevelSourceSpec {
             val events = (1 to EventsPerBatch)
               .map(eventId => s"rebalance $rebalanceId - batch $batchId - event $eventId")
               .toList
-            val asBytes = events.map(_.getBytes(StandardCharsets.UTF_8))
+            val asBytes = events.map(_.getBytes(StandardCharsets.UTF_8)).map(ByteBuffer.wrap)
             Stream.emit(LowLevelEvents(events = asBytes, ack = events)) ++ Stream.sleep[IO](TimeBetweenBatches).drain
           }
         }

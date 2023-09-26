@@ -47,7 +47,7 @@ class NonAtomicFieldsSpec extends Specification with CatsEffect {
       tabledEntity,
       expectedField,
       Set((0, 0), (0, 1), (1, 0)),
-      Map.empty
+      Nil
     )
 
     NonAtomicFields.resolveTypes(resolver, entities).map { case NonAtomicFields.Result(fields, failures) =>
@@ -84,7 +84,7 @@ class NonAtomicFieldsSpec extends Specification with CatsEffect {
       tabledEntity,
       expectedField,
       Set((0, 0), (0, 1), (1, 0)),
-      Map.empty
+      Nil
     )
 
     NonAtomicFields.resolveTypes(resolver, entities).map { case NonAtomicFields.Result(fields, failures) =>

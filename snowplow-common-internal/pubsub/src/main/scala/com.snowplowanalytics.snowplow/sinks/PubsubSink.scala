@@ -16,10 +16,10 @@ import com.google.api.gax.batching.BatchingSettings
 import com.google.cloud.pubsub.v1.Publisher
 import com.google.protobuf.ByteString
 import com.google.pubsub.v1.{ProjectTopicName, PubsubMessage}
+import com.google.api.core.ApiFutures
 import org.threeten.bp.{Duration => ThreetenDuration}
 
 import java.util.UUID
-import scala.concurrent.duration.FiniteDuration
 import scala.jdk.CollectionConverters._
 
 import com.snowplowanalytics.snowplow.pubsub.FutureInterop
@@ -32,18 +32,25 @@ object PubsubSink {
     }
 
   private def sinkBatch[F[_]: Async](publisher: Publisher, batch: List[Sinkable]): F[Unit] =
-    batch.parTraverse_ { case Sinkable(bytes, _, attributes) =>
-      for {
-        uuid <- Async[F].delay(UUID.randomUUID)
-        message = PubsubMessage.newBuilder
-                    .setData(ByteString.copyFrom(bytes))
-                    .setMessageId(uuid.toString)
-                    .putAllAttributes(attributes.asJava)
-                    .build
-        fut <- Async[F].delay(publisher.publish(message))
-        _ <- FutureInterop.fromFuture[F, String](fut)
-      } yield ()
-    }
+    batch
+      .parTraverse { case Sinkable(bytes, _, attributes) =>
+        for {
+          uuid <- Async[F].delay(UUID.randomUUID)
+          message = PubsubMessage.newBuilder
+                      .setData(ByteString.copyFrom(bytes))
+                      .setMessageId(uuid.toString)
+                      .putAllAttributes(attributes.asJava)
+                      .build
+          fut <- Async[F].delay(publisher.publish(message))
+        } yield fut
+      }
+      .flatMap { futures =>
+        for {
+          _ <- Async[F].delay(publisher.publishAllOutstanding)
+          combined = ApiFutures.allAsList(futures.asJava)
+          _ <- FutureInterop.fromFuture(combined)
+        } yield ()
+      }
 
   private def mkPublisher[F[_]: Sync](config: PubsubSinkConfig): Resource[F, Publisher] = {
     val topic = ProjectTopicName.of(config.topic.projectId, config.topic.topicId)
@@ -51,7 +58,7 @@ object PubsubSink {
     val batchSettings = BatchingSettings.newBuilder
       .setElementCountThreshold(config.batchSize)
       .setRequestByteThreshold(config.requestByteThreshold)
-      .setDelayThreshold(convertDuration(config.delayThreshold))
+      .setDelayThreshold(ThreetenDuration.ofNanos(Long.MaxValue))
 
     val make = Sync[F].delay {
       Publisher
@@ -66,7 +73,4 @@ object PubsubSink {
       }
     }
   }
-
-  private def convertDuration(d: FiniteDuration): ThreetenDuration =
-    ThreetenDuration.ofMillis(d.toMillis)
 }
