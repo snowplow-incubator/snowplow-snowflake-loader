@@ -75,6 +75,7 @@ object Dependencies {
   val kinesisSdk2         = "software.amazon.awssdk" % "kinesis"                    % V.awsSdk2
   val dynamoDbSdk2        = "software.amazon.awssdk" % "dynamodb"                   % V.awsSdk2
   val cloudwatchSdk2      = "software.amazon.awssdk" % "cloudwatch"                 % V.awsSdk2
+  val stsSdk2             = "software.amazon.awssdk" % "sts"                        % V.awsSdk2
   val catsEffectTestingIt = "org.typelevel"         %% "cats-effect-testkit"        % V.catsEffect       % IntegrationTest
   val catsEffectSpecs2It  = "org.typelevel"         %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % IntegrationTest
   val localstackIt        = "org.testcontainers"     % "localstack"                 % V.localstack       % IntegrationTest
@@ -181,8 +182,9 @@ object Dependencies {
   )
 
   val kinesisDependencies = Seq(
-    jaxb  % Runtime,
-    slf4j % Runtime
+    jaxb    % Runtime,
+    slf4j   % Runtime,
+    stsSdk2 % Runtime
   )
 
 }
