@@ -28,9 +28,9 @@ jobs:
     strategy:
       matrix:
         app:
-          - azure
-          - gcp
-          - aws
+          - kafka
+          - pubsub
+          - kinesis
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2

@@ -10,17 +10,17 @@ lazy val root = project
   .in(file("."))
   .aggregate(
     streams,
-    kafka,
-    pubsub,
-    kinesis,
+    kafkaLib,
+    pubsubLib,
+    kinesisLib,
     loadersCommon,
     core,
-    azure,
-    azureDistroless,
-    gcp,
-    gcpDistroless,
-    aws,
-    awsDistroless
+    kafka,
+    kafkaDistroless,
+    pubsub,
+    pubsubDistroless,
+    kinesis,
+    kinesisDistroless
   )
 
 /* Common Snowplow internal modules, to become separate library */
@@ -30,22 +30,22 @@ lazy val streams: Project = project
   .settings(BuildSettings.commonSettings)
   .settings(libraryDependencies ++= Dependencies.streamsDependencies)
 
-lazy val kafka: Project = project
+lazy val kafkaLib: Project = project
   .in(file("snowplow-common-internal/kafka"))
   .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
+  .settings(libraryDependencies ++= Dependencies.kafkaLibDependencies)
   .dependsOn(streams)
 
-lazy val pubsub: Project = project
+lazy val pubsubLib: Project = project
   .in(file("snowplow-common-internal/pubsub"))
   .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
+  .settings(libraryDependencies ++= Dependencies.pubsubLibDependencies)
   .dependsOn(streams)
 
-lazy val kinesis: Project = project
+lazy val kinesisLib: Project = project
   .in(file("snowplow-common-internal/kinesis"))
   .settings(BuildSettings.commonSettings)
-  .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
+  .settings(libraryDependencies ++= Dependencies.kinesisLibDependencies)
   .dependsOn(streams)
   .settings(
     Defaults.itSettings,
@@ -72,49 +72,49 @@ lazy val core: Project = project
   .settings(libraryDependencies ++= Dependencies.coreDependencies)
   .dependsOn(loadersCommon, streams)
 
-lazy val azure: Project = project
-  .in(file("modules/azure"))
-  .settings(BuildSettings.azureSettings)
-  .settings(libraryDependencies ++= Dependencies.azureDependencies)
-  .dependsOn(core, kafka)
+lazy val kafka: Project = project
+  .in(file("modules/kafka"))
+  .settings(BuildSettings.kafkaSettings)
+  .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
+  .dependsOn(core, kafkaLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
-lazy val azureDistroless: Project = project
-  .in(file("modules/distroless/azure"))
-  .settings(BuildSettings.azureSettings)
-  .settings(libraryDependencies ++= Dependencies.azureDependencies)
-  .settings(sourceDirectory := (azure / sourceDirectory).value)
-  .dependsOn(core, kafka)
+lazy val kafkaDistroless: Project = project
+  .in(file("modules/distroless/kafka"))
+  .settings(BuildSettings.kafkaSettings)
+  .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
+  .settings(sourceDirectory := (kafka / sourceDirectory).value)
+  .dependsOn(core, kafkaLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDistrolessDockerPlugin)
 
-lazy val gcp: Project = project
-  .in(file("modules/gcp"))
-  .settings(BuildSettings.gcpSettings)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
-  .dependsOn(core, pubsub)
+lazy val pubsub: Project = project
+  .in(file("modules/pubsub"))
+  .settings(BuildSettings.pubsubSettings)
+  .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
+  .dependsOn(core, pubsubLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
-lazy val gcpDistroless: Project = project
-  .in(file("modules/distroless/gcp"))
-  .settings(BuildSettings.gcpSettings)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
-  .settings(sourceDirectory := (gcp / sourceDirectory).value)
-  .dependsOn(core, pubsub)
+lazy val pubsubDistroless: Project = project
+  .in(file("modules/distroless/pubsub"))
+  .settings(BuildSettings.pubsubSettings)
+  .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
+  .settings(sourceDirectory := (pubsub / sourceDirectory).value)
+  .dependsOn(core, pubsubLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDistrolessDockerPlugin)
 
-lazy val aws: Project = project
-  .in(file("modules/aws"))
-  .settings(BuildSettings.awsSettings)
-  .settings(libraryDependencies ++= Dependencies.gcpDependencies)
-  .dependsOn(core, kinesis)
+lazy val kinesis: Project = project
+  .in(file("modules/kinesis"))
+  .settings(BuildSettings.kinesisSettings)
+  .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
+  .dependsOn(core, kinesisLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
-lazy val awsDistroless: Project = project
-  .in(file("modules/distroless/aws"))
-  .settings(BuildSettings.awsSettings)
-  .settings(libraryDependencies ++= Dependencies.awsDependencies)
-  .settings(sourceDirectory := (aws / sourceDirectory).value)
-  .dependsOn(core, kinesis)
+lazy val kinesisDistroless: Project = project
+  .in(file("modules/distroless/kinesis"))
+  .settings(BuildSettings.kinesisSettings)
+  .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
+  .settings(sourceDirectory := (kinesis / sourceDirectory).value)
+  .dependsOn(core, kinesisLib)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDistrolessDockerPlugin)
 
 ThisBuild / fork := true

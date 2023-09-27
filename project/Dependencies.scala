@@ -111,19 +111,19 @@ object Dependencies {
     slf4j % Provided
   )
 
-  val kafkaDependencies = Seq(
+  val kafkaLibDependencies = Seq(
     fs2Kafka,
     circeConfig,
     circeGeneric
   )
 
-  val pubsubDependencies = Seq(
+  val pubsubLibDependencies = Seq(
     pubsub,
     circeConfig,
     circeGeneric
   )
 
-  val kinesisDependencies = Seq(
+  val kinesisLibDependencies = Seq(
     fs2AwsKinesis,
     arnsSdk2,
     kinesisSdk2,
@@ -169,18 +169,18 @@ object Dependencies {
     slf4j % Test
   )
 
-  val azureDependencies = Seq(
+  val kafkaDependencies = Seq(
     slf4j % Runtime,
     jaxb  % Runtime,
     azureIdentity
   )
 
-  val gcpDependencies = Seq(
+  val pubsubDependencies = Seq(
     jaxb  % Runtime,
     slf4j % Runtime
   )
 
-  val awsDependencies = Seq(
+  val kinesisDependencies = Seq(
     jaxb  % Runtime,
     slf4j % Runtime
   )

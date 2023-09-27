@@ -44,17 +44,17 @@ object BuildSettings {
     buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.AppInfo")
   ) ++ commonSettings
 
-  lazy val azureSettings = appSettings ++ Seq(
-    name := "snowflake-loader-kinesis",
+  lazy val kafkaSettings = appSettings ++ Seq(
+    name := "snowflake-loader-kafka",
     buildInfoKeys += BuildInfoKey("cloud" -> "Azure")
   )
 
-  lazy val gcpSettings = appSettings ++ Seq(
+  lazy val pubsubSettings = appSettings ++ Seq(
     name := "snowflake-loader-pubsub",
     buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
-  lazy val awsSettings = appSettings ++ Seq(
+  lazy val kinesisSettings = appSettings ++ Seq(
     name := "snowflake-loader-kinesis",
     buildInfoKeys += BuildInfoKey("cloud" -> "AWS")
   )
