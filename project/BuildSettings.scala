@@ -54,4 +54,9 @@ object BuildSettings {
     buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
+  lazy val awsSettings = appSettings ++ Seq(
+    name := "snowflake-loader-kinesis",
+    buildInfoKeys += BuildInfoKey("cloud" -> "AWS")
+  )
+
 }

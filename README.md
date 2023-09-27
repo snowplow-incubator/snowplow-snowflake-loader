@@ -19,7 +19,7 @@ Basic usage:
 ```bash
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
-  snowplow/snowflake-loader-azure:0.1.0 \
+  snowplow/snowflake-loader-kafka:0.1.0 \
   --config /var/config.hocon
 ```
 
@@ -30,7 +30,18 @@ The GCP snowflake loader reads the stream of enriched events from Pubsub.
 ```bash
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
-  snowplow/snowflake-loader-gcp:0.1.0 \
+  snowplow/snowflake-loader-pubsub:0.1.0 \
+  --config /var/config.hocon
+```
+
+#### AWS
+
+The AWS snowflake loader reads the stream of enriched events from Kinesis.
+
+```bash
+docker run \
+  -v /path/to/config.hocon:/var/config.hocon \
+  snowplow/snowflake-loader-kinesis:0.1.0 \
   --config /var/config.hocon
 ```
 

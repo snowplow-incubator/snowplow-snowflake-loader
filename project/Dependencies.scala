@@ -180,4 +180,9 @@ object Dependencies {
     slf4j % Runtime
   )
 
+  val awsDependencies = Seq(
+    jaxb  % Runtime,
+    slf4j % Runtime
+  )
+
 }

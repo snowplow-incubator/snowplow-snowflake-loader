@@ -1,0 +1,19 @@
+{
+  "input": {
+    "streamName": "snowplow-enriched-events"
+  }
+
+  "output": {
+
+    "good": {
+      "url": "https://orgname.accountname.snowflakecomputing.com"
+      "user": "snowplow"
+      "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
+      "database": "snowplow"
+      "schema": "atomic"
+    }
+
+    "bad": null # TODO need kinesis sink
+
+  }
+}

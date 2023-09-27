@@ -30,6 +30,7 @@ jobs:
         app:
           - azure
           - gcp
+          - aws
     steps:
       - name: Checkout Github
         uses: actions/checkout@v2
