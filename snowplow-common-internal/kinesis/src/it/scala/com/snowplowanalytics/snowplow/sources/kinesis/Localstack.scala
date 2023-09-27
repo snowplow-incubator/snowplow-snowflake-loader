@@ -15,10 +15,9 @@ import org.testcontainers.containers.wait.strategy.Wait
 import org.testcontainers.utility.DockerImageName
 import software.amazon.awssdk.regions.Region
 
-
 object Localstack {
 
-  def resource(region: Region, kinesisInitializeStreams: String): Resource[IO, LocalStackContainer] = {
+  def resource(region: Region, kinesisInitializeStreams: String): Resource[IO, LocalStackContainer] =
     Resource.make {
       val localstack = new LocalStackContainer(DockerImageName.parse("localstack/localstack:2.2.0"))
       localstack.addEnv("AWS_DEFAULT_REGION", region.id)
@@ -26,8 +25,7 @@ object Localstack {
       localstack.addExposedPort(4566)
       localstack.setWaitStrategy(Wait.forLogMessage(".*Ready.*", 1))
       IO(startLocalstack(localstack))
-    }{ ls => IO.blocking(ls.stop())}
-  }
+    }(ls => IO.blocking(ls.stop()))
 
   private def startLocalstack(localstack: LocalStackContainer): LocalStackContainer = {
     localstack.start()

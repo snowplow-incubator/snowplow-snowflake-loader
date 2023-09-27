@@ -18,7 +18,7 @@ object GcpApp extends LoaderApp[KinesisSourceConfig, Unit](BuildInfo) {
 
   override def badSink: SinkProvider = { _ =>
     Resource.pure {
-      Sink { _ => IO.unit }
+      Sink(_ => IO.unit)
     }
   }
 }
