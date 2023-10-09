@@ -34,12 +34,12 @@ import scala.jdk.CollectionConverters._
 trait ChannelProvider[F[_]] {
 
   /**
-   * Closes the open channel and opens a new channel
+   * Wraps an action which requires the channel to be closed
    *
-   * This should be called after altering the table to add new columns. The newly opened channel
-   * will be able to use the new columns.
+   * This should be called when altering the table to add new columns. The newly opened channel will
+   * be able to use the new columns.
    */
-  def reset: F[Unit]
+  def withClosedChannel[A](fa: F[A]): F[A]
 
   /**
    * Enqueues rows to be sent to Snowflake
@@ -75,7 +75,7 @@ object ChannelProvider {
     cause: SFException
   )
 
-  /** A large number so we don't limit the number of permits for calls to `flush` and `reset` */
+  /** A large number so we don't limit the number of permits for calls to `flush` and `enqueue` */
   private val allAvailablePermits: Long = Long.MaxValue
 
   def make[F[_]: Async](config: Config.Snowflake): Resource[F, ChannelProvider[F]] =
@@ -94,14 +94,15 @@ object ChannelProvider {
     next: Resource[F, SnowflakeStreamingIngestChannel]
   ): ChannelProvider[F] =
     new ChannelProvider[F] {
-      def reset: F[Unit] =
+      def withClosedChannel[A](fa: F[A]): F[A] =
         withAllPermits(sem) {
           Sync[F].uncancelable { _ =>
             for {
               _ <- hs.clear
+              a <- fa
               channel <- hs.swap(next)
               _ <- ref.set(channel)
-            } yield ()
+            } yield a
           }
         }
 

@@ -284,10 +284,9 @@ object Processing {
     if (extraColsRequired.isEmpty)
       ().pure[F]
     else
-      for {
-        _ <- env.tblManager.addColumns(extraColsRequired.toList)
-        _ <- env.channelProvider.reset
-      } yield ()
+      env.channelProvider.withClosedChannel {
+        env.tblManager.addColumns(extraColsRequired.toList)
+      }
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.chunks

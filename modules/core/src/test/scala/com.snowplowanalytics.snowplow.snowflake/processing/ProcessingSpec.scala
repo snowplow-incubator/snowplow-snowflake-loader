@@ -105,8 +105,9 @@ class ProcessingSpec extends Specification with CatsEffect {
     } yield state should beEqualTo(
       Vector(
         Action.EnqueuedRows(1),
+        Action.ClosedChannel,
         Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
-        Action.ResetChannel,
+        Action.OpenedChannel,
         Action.EnqueuedRows(1),
         Action.FlushedChannel,
         Action.AddedGoodCountMetric(2),

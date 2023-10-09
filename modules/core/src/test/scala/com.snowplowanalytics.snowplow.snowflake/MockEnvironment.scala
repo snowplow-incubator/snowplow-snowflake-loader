@@ -28,7 +28,8 @@ object MockEnvironment {
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
     case class AlterTableAddedColumns(columns: List[String]) extends Action
-    case object ResetChannel extends Action
+    case object ClosedChannel extends Action
+    case object OpenedChannel extends Action
     case object FlushedChannel extends Action
     case class EnqueuedRows(rowCount: Int) extends Action
     case class AddedGoodCountMetric(count: Int) extends Action
@@ -117,8 +118,12 @@ object MockEnvironment {
     for {
       responseRef <- Ref[IO].of(responses)
     } yield new ChannelProvider[IO] {
-      def reset: IO[Unit] =
-        actionRef.update(_ :+ ResetChannel)
+      def withClosedChannel[A](fa: IO[A]): IO[A] =
+        for {
+          _ <- actionRef.update(_ :+ ClosedChannel)
+          a <- fa
+          _ <- actionRef.update(_ :+ OpenedChannel)
+        } yield a
 
       def enqueue(rows: Seq[Map[String, AnyRef]]): IO[List[ChannelProvider.EnqueueFailure]] =
         for {
