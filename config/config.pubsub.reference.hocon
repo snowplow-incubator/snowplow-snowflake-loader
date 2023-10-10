@@ -79,7 +79,6 @@
     "maxDelay": "1 second"
 
     # - How many batches can we send simultaneously over the network to Snowflake.
-    # - The Snowflake SDK dictates this should be kept below the number of available runtime processors (cpu)
     "uploadConcurrency":  1
   }
 

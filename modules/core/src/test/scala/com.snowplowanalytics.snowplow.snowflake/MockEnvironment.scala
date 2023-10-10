@@ -30,8 +30,7 @@ object MockEnvironment {
     case class AlterTableAddedColumns(columns: List[String]) extends Action
     case object ClosedChannel extends Action
     case object OpenedChannel extends Action
-    case object FlushedChannel extends Action
-    case class EnqueuedRows(rowCount: Int) extends Action
+    case class WroteRowsToSnowflake(rowCount: Int) extends Action
     case class AddedGoodCountMetric(count: Int) extends Action
     case class AddedBadCountMetric(count: Int) extends Action
   }
@@ -43,11 +42,11 @@ object MockEnvironment {
    * @param inputs
    *   Input events to send into the environment.
    * @param channelResponses
-   *   Responses we want the `ChannelProvider` to return when someone calls `enqueue`
+   *   Responses we want the `ChannelProvider` to return when someone calls `write`
    * @return
    *   An environment and a Ref that records the actions make by the environment
    */
-  def build(inputs: List[TokenedEvents], channelResponses: List[List[ChannelProvider.EnqueueFailure]] = Nil): IO[MockEnvironment] =
+  def build(inputs: List[TokenedEvents], channelResponses: List[ChannelProvider.WriteResult] = Nil): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
       channelProvider <- testChannelProvider(state, channelResponses)
@@ -108,16 +107,19 @@ object MockEnvironment {
    * @param actionRef
    *   Global Ref used to accumulate actions that happened
    * @param responses
-   *   Responses that this mocked ChannelProvider should return each time someone calls `enqueue`.
-   *   If no responses given, then it will return with a successful response.
+   *   Responses that this mocked ChannelProvider should return each time someone calls `write`. If
+   *   no responses given, then it will return with a successful response.
    */
   private def testChannelProvider(
     actionRef: Ref[IO, Vector[Action]],
-    responses: List[List[ChannelProvider.EnqueueFailure]]
+    responses: List[ChannelProvider.WriteResult]
   ): IO[ChannelProvider[IO]] =
     for {
       responseRef <- Ref[IO].of(responses)
     } yield new ChannelProvider[IO] {
+      def reset: IO[Unit] =
+        actionRef.update(_ :+ ClosedChannel :+ OpenedChannel)
+
       def withClosedChannel[A](fa: IO[A]): IO[A] =
         for {
           _ <- actionRef.update(_ :+ ClosedChannel)
@@ -125,17 +127,19 @@ object MockEnvironment {
           _ <- actionRef.update(_ :+ OpenedChannel)
         } yield a
 
-      def enqueue(rows: Seq[Map[String, AnyRef]]): IO[List[ChannelProvider.EnqueueFailure]] =
+      def write(rows: Seq[Map[String, AnyRef]]): IO[ChannelProvider.WriteResult] =
         for {
           response <- responseRef.modify {
                         case head :: tail => (tail, head)
-                        case Nil          => (Nil, Nil)
+                        case Nil          => (Nil, ChannelProvider.WriteResult.WriteFailures(Nil))
                       }
-          _ <- actionRef.update(_ :+ EnqueuedRows(rows.size - response.size))
+          _ <- response match {
+                 case ChannelProvider.WriteResult.WriteFailures(failures) =>
+                   actionRef.update(_ :+ WroteRowsToSnowflake(rows.size - failures.size))
+                 case ChannelProvider.WriteResult.ChannelIsInvalid =>
+                   IO.unit
+               }
         } yield response
-
-      def flush: IO[Unit] =
-        actionRef.update(_ :+ FlushedChannel)
     }
 
   def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {

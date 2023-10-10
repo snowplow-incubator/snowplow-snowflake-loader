@@ -8,10 +8,10 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
-import cats.{Applicative, Foldable, Monad}
+import cats.{Applicative, Foldable, Monad, Semigroup}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
-import fs2.{Chunk, Pipe, Pull, Stream}
+import fs2.{Pipe, Pull, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -61,15 +61,15 @@ object Processing {
    *   The total size in bytes of events in the original batch. Includes all good and bad events.
    * @param badAccumulated
    *   Events that failed for any reason so far.
-   * @param token
-   *   The token to be emitted after we have finished processing all events
+   * @param tokens
+   *   The tokens to be emitted after we have finished processing all events
    */
   private case class BatchAfterTransform(
     toBeInserted: Vector[EventWithTransform],
     origBatchBytes: Long,
     badAccumulated: List[BadRow],
     countInserted: Int,
-    token: Unique.Token
+    tokens: List[Unique.Token]
   )
 
   /**
@@ -83,22 +83,22 @@ object Processing {
    * @param unexpectedFailures
    *   Events which failed to be inserted for any other reason
    */
-  private case class EnqueueResult(
+  private case class ParsedWriteResult(
     extraColsRequired: Set[String],
     eventsWithExtraCols: Vector[EventWithTransform],
     unexpectedFailures: List[(Event, SFException)]
   )
 
-  private object EnqueueResult {
-    def empty: EnqueueResult = EnqueueResult(Set.empty, Vector.empty, Nil)
+  private object ParsedWriteResult {
+    def empty: ParsedWriteResult = ParsedWriteResult(Set.empty, Vector.empty, Nil)
 
-    def buildFrom(events: Vector[EventWithTransform], results: List[ChannelProvider.EnqueueFailure]): EnqueueResult =
-      results.foldLeft(EnqueueResult.empty) { case (EnqueueResult(extraCols, eventsWithExtraCols, unexpected), failure) =>
+    def buildFrom(events: Vector[EventWithTransform], results: List[ChannelProvider.WriteFailure]): ParsedWriteResult =
+      results.foldLeft(ParsedWriteResult.empty) { case (ParsedWriteResult(extraCols, eventsWithExtraCols, unexpected), failure) =>
         val event = fastGetByIndex(events, failure.index)
         if (failure.extraCols.nonEmpty)
-          EnqueueResult(extraCols ++ failure.extraCols, eventsWithExtraCols :+ event, unexpected)
+          ParsedWriteResult(extraCols ++ failure.extraCols, eventsWithExtraCols :+ event, unexpected)
         else
-          EnqueueResult(extraCols, eventsWithExtraCols, (event._1, failure.cause) :: unexpected)
+          ParsedWriteResult(extraCols, eventsWithExtraCols, (event._1, failure.cause) :: unexpected)
       }
   }
 
@@ -109,14 +109,11 @@ object Processing {
 
     in.through(parseBytes(badProcessor))
       .through(transform(badProcessor))
-      .through(enqueueAttempt1(env, badProcessor))
-      .through(enqueueAttempt2(env, badProcessor))
       .through(batchUp(env.batching))
-      .prefetch
-      .through(flush(env))
+      .through(writeToSnowflake(env, badProcessor))
       .through(sendFailedEvents(env))
       .through(sendMetrics(env))
-      .map(_.token)
+      .through(emitTokens)
   }
 
   /** Parse raw bytes into Event using analytics sdk */
@@ -151,7 +148,7 @@ object Processing {
         origBatchBytes = bytes,
         badAccumulated = bad ::: moreBad,
         countInserted  = 0,
-        token          = token
+        tokens         = List(token)
       )
 
   private def transformBatch[F[_]: Monad](
@@ -173,65 +170,87 @@ object Processing {
         }
       }
 
+  private def writeToSnowflake[F[_]: Async](
+    env: Environment[F],
+    badProcessor: BadRowProcessor
+  ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+    _.parEvalMap(env.batching.uploadConcurrency) { batch =>
+      for {
+        batch <- writeAttempt1(env, badProcessor, batch)
+        batch <- writeAttempt2(env, badProcessor, batch)
+      } yield batch
+    }
+
+  private def withWriteAttempt[F[_]: Sync](
+    env: Environment[F],
+    batch: BatchAfterTransform
+  )(
+    handleFailures: List[ChannelProvider.WriteFailure] => F[BatchAfterTransform]
+  ): F[BatchAfterTransform] =
+    if (batch.toBeInserted.isEmpty)
+      batch.pure[F]
+    else
+      Sync[F].untilDefinedM {
+        env.channelProvider.write(batch.toBeInserted.map(_._2)).flatMap {
+          case ChannelProvider.WriteResult.ChannelIsInvalid =>
+            // Reset the channel and immediately try again
+            env.channelProvider.reset.as(none)
+          case ChannelProvider.WriteResult.WriteFailures(notWritten) =>
+            handleFailures(notWritten).map(Some(_))
+        }
+      }
+
   /**
-   * First attempt to enqueue events with the Snowflake SDK
+   * First attempt to write events with the Snowflake SDK
    *
    * Enqueue failures are expected if the Event contains columns which are not present in the target
    * table. If this happens, we alter the table ready for the second attempt
    */
-  private def enqueueAttempt1[F[_]: Sync](
+  private def writeAttempt1[F[_]: Sync](
     env: Environment[F],
-    badProcessor: BadRowProcessor
-  ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
-    _.evalMap { case batch @ BatchAfterTransform(events, _, bad, _, _) =>
-      if (events.isEmpty)
-        batch.pure[F]
-      else
-        for {
-          notEnqueued <- env.channelProvider.enqueue(events.map(_._2))
-          folded = EnqueueResult.buildFrom(events, notEnqueued)
-          _ <- abortIfFatalException[F](folded.unexpectedFailures)
-          _ <- handleSchemaEvolution(env, folded.extraColsRequired)
-        } yield {
-          val moreBad = folded.unexpectedFailures.map { case (event, sfe) =>
-            badRowFromEnqueueFailure(badProcessor, event, sfe)
-          }
-          batch.copy(
-            toBeInserted   = folded.eventsWithExtraCols,
-            badAccumulated = moreBad ::: bad,
-            countInserted  = events.size - notEnqueued.size
-          )
+    badProcessor: BadRowProcessor,
+    batch: BatchAfterTransform
+  ): F[BatchAfterTransform] =
+    withWriteAttempt(env, batch) { notWritten =>
+      val parsedResult = ParsedWriteResult.buildFrom(batch.toBeInserted, notWritten)
+      for {
+        _ <- abortIfFatalException[F](parsedResult.unexpectedFailures)
+        _ <- handleSchemaEvolution(env, parsedResult.extraColsRequired)
+      } yield {
+        val moreBad = parsedResult.unexpectedFailures.map { case (event, sfe) =>
+          badRowFromEnqueueFailure(badProcessor, event, sfe)
         }
+        batch.copy(
+          toBeInserted   = parsedResult.eventsWithExtraCols,
+          badAccumulated = moreBad ::: batch.badAccumulated,
+          countInserted  = batch.toBeInserted.size - notWritten.size
+        )
+      }
     }
 
   /**
-   * Second attempt to enqueue events with the Snowflake SDK
+   * Second attempt to write events with the Snowflake SDK
    *
    * This happens after we have attempted to alter the table for any new columns. So insert errors
    * at this stage are unexpected.
    */
-  private def enqueueAttempt2[F[_]: Sync](
+  private def writeAttempt2[F[_]: Sync](
     env: Environment[F],
-    badProcessor: BadRowProcessor
-  ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
-    _.evalMap { case batch @ BatchAfterTransform(events, _, bad, countInserted, _) =>
-      if (events.isEmpty)
-        batch.pure[F]
-      else
-        for {
-          notEnqueued <- env.channelProvider.enqueue(events.map(_._2))
-          mapped = notEnqueued.map(f => (fastGetByIndex(events, f.index)._1, f.cause))
-          _ <- abortIfFatalException[F](mapped)
-        } yield {
-          val moreBad = mapped.map { case (event, sfe) =>
-            badRowFromEnqueueFailure(badProcessor, event, sfe)
-          }
-          batch.copy(
-            toBeInserted   = Vector.empty,
-            badAccumulated = moreBad ::: bad,
-            countInserted  = countInserted + events.size - notEnqueued.size
-          )
+    badProcessor: BadRowProcessor,
+    batch: BatchAfterTransform
+  ): F[BatchAfterTransform] =
+    withWriteAttempt(env, batch) { notWritten =>
+      val mapped = notWritten.map(f => (fastGetByIndex(batch.toBeInserted, f.index)._1, f.cause))
+      abortIfFatalException[F](mapped).as {
+        val moreBad = mapped.map { case (event, sfe) =>
+          badRowFromEnqueueFailure(badProcessor, event, sfe)
         }
+        batch.copy(
+          toBeInserted   = Vector.empty,
+          badAccumulated = moreBad ::: batch.badAccumulated,
+          countInserted  = batch.countInserted + batch.toBeInserted.size - notWritten.size
+        )
+      }
     }
 
   private def badRowFromEnqueueFailure(
@@ -289,74 +308,76 @@ object Processing {
       }
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
-    _.chunks
-      .evalTap { chunk =>
-        val badAccumulated = chunk.toList.flatMap(_.badAccumulated)
-        if (badAccumulated.nonEmpty) {
-          val serialized = badAccumulated.map(_.compact.getBytes(StandardCharsets.UTF_8))
-          env.badSink.sinkSimple(serialized)
-        } else Applicative[F].unit
-      }
-      .unchunks
+    _.evalTap { batch =>
+      if (batch.badAccumulated.nonEmpty) {
+        val serialized = batch.badAccumulated.map(_.compact.getBytes(StandardCharsets.UTF_8))
+        env.badSink.sinkSimple(serialized)
+      } else Applicative[F].unit
+    }
 
   private def sendMetrics[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
-    _.chunks
-      .evalTap { chunk =>
-        val countBad  = chunk.foldLeft(0)(_ + _.badAccumulated.size)
-        val countGood = chunk.foldLeft(0)(_ + _.countInserted)
-        env.metrics.addGood(countGood) *> env.metrics.addBad(countBad)
-      }
-      .unchunks
+    _.evalTap { batch =>
+      env.metrics.addGood(batch.countInserted) *> env.metrics.addBad(batch.badAccumulated.size)
+    }
+
+  private def emitTokens[F[_]]: Pipe[F, BatchAfterTransform, Unique.Token] =
+    _.flatMap { batch =>
+      Stream.emits(batch.tokens)
+    }
 
   private def fastGetByIndex[A](items: Vector[A], index: Long): A = items(index.toInt)
 
-  private def batchUp[F[_]: Async](config: Config.Batching): Pipe[F, BatchAfterTransform, Chunk[BatchAfterTransform]] = {
+  private implicit def batchedSemigroup: Semigroup[BatchAfterTransform] = new Semigroup[BatchAfterTransform] {
+    def combine(x: BatchAfterTransform, y: BatchAfterTransform): BatchAfterTransform =
+      BatchAfterTransform(
+        toBeInserted   = x.toBeInserted ++ y.toBeInserted,
+        origBatchBytes = x.origBatchBytes + y.origBatchBytes,
+        badAccumulated = x.badAccumulated ::: y.badAccumulated,
+        countInserted  = x.countInserted + y.countInserted,
+        tokens         = x.tokens ::: y.tokens
+      )
+  }
+
+  private def batchUp[F[_]: Async](config: Config.Batching): Pipe[F, BatchAfterTransform, BatchAfterTransform] = {
     def go(
       timedPull: Pull.Timed[F, BatchAfterTransform],
-      unflushed: Chunk[BatchAfterTransform]
-    ): Pull[F, Chunk[BatchAfterTransform], Unit] =
+      unflushed: Option[BatchAfterTransform]
+    ): Pull[F, BatchAfterTransform, Unit] =
       timedPull.uncons.flatMap {
         case None => // Upstream stream has finished cleanly
-          if (unflushed.isEmpty)
-            Pull.done
-          else
-            for {
-              _ <- Pull.output1(unflushed)
-              _ <- Pull.done
-            } yield ()
+          unflushed match {
+            case None    => Pull.done
+            case Some(b) => Pull.output1(b) *> Pull.done
+          }
         case Some((Left(_), next)) => // The timer we set has timed out.
-          for {
-            _ <- Pull.output1(unflushed)
-            _ <- go(next, Chunk.empty)
-          } yield ()
-        case Some((Right(pulled), next)) => // Received another batch before the timer timed out
-          val combined     = unflushed ++ pulled
-          val combinedSize = combined.foldLeft(0L)(_ + _.origBatchBytes)
-          if (combinedSize > config.maxBytes)
+          unflushed match {
+            case None    => go(next, None)
+            case Some(b) => Pull.output1(b) >> go(next, None)
+          }
+        case Some((Right(pulled), next)) if pulled.isEmpty =>
+          go(next, unflushed)
+        case Some((Right(nonEmptyChunk), next)) => // Received another batch before the timer timed out
+          val combined = unflushed match {
+            case None    => nonEmptyChunk.iterator.reduce(_ |+| _)
+            case Some(b) => nonEmptyChunk.iterator.foldLeft(b)(_ |+| _)
+          }
+          if (combined.origBatchBytes > config.maxBytes)
             for {
               _ <- Pull.output1(combined)
               _ <- next.timeout(Duration.Zero)
-              _ <- go(next, Chunk.empty)
+              _ <- go(next, None)
             } yield ()
           else {
             for {
               _ <- if (unflushed.isEmpty) next.timeout(config.maxDelay) else Pull.pure(())
-              _ <- go(next, combined)
+              _ <- go(next, Some(combined))
             } yield ()
           }
       }
     in =>
       in.pull.timed { timedPull =>
-        go(timedPull, Chunk.empty)
+        go(timedPull, None)
       }.stream
   }
-
-  private def flush[F[_]: Async](env: Environment[F]): Pipe[F, Chunk[BatchAfterTransform], BatchAfterTransform] =
-    _.parEvalMap(env.batching.uploadConcurrency) { chunk =>
-      if (chunk.indexWhere(_.countInserted > 0).nonEmpty)
-        env.channelProvider.flush.as(chunk)
-      else
-        Async[F].pure(chunk)
-    }.unchunks
 
 }

@@ -23,7 +23,7 @@ import net.snowflake.ingest.streaming.{
   SnowflakeStreamingIngestClientFactory
 }
 import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
-import net.snowflake.ingest.utils.{ParameterProvider, SFException}
+import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
 
 import com.snowplowanalytics.snowplow.snowflake.Config
 
@@ -34,6 +34,14 @@ import scala.jdk.CollectionConverters._
 trait ChannelProvider[F[_]] {
 
   /**
+   * Closes the open channel and opens a new channel
+   *
+   * This should be called if the channel becomes invalid. And the channel becomes invalid if the
+   * table is altered by another concurrent loader.
+   */
+  def reset: F[Unit]
+
+  /**
    * Wraps an action which requires the channel to be closed
    *
    * This should be called when altering the table to add new columns. The newly opened channel will
@@ -42,17 +50,14 @@ trait ChannelProvider[F[_]] {
   def withClosedChannel[A](fa: F[A]): F[A]
 
   /**
-   * Enqueues rows to be sent to Snowflake
+   * Writes rows to Snowflake
    *
    * @param rows
    *   The rows to be inserted
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def enqueue(rows: Seq[Map[String, AnyRef]]): F[List[ChannelProvider.EnqueueFailure]]
-
-  /** Flush enqueued events */
-  def flush: F[Unit]
+  def write(rows: Seq[Map[String, AnyRef]]): F[ChannelProvider.WriteResult]
 }
 
 object ChannelProvider {
@@ -69,18 +74,42 @@ object ChannelProvider {
    *   The Snowflake exception, whose error code and message describes the reason for the failed
    *   enqueue
    */
-  case class EnqueueFailure(
+  case class WriteFailure(
     index: Long,
     extraCols: List[String],
     cause: SFException
   )
 
+  /** The result of trying to write a batch of events to Snowflake */
+  sealed trait WriteResult
+
+  object WriteResult {
+
+    /**
+     * The result of `write` when the channel has become invalid
+     *
+     * This can happen if some other process (e.g. a concurrent loader) has altered the Snowflake
+     * table
+     */
+    case object ChannelIsInvalid extends WriteResult
+
+    /**
+     * The result of `write` when the channel is valid
+     *
+     * @param value
+     *   Contains details of any failures to write events to Snowflake. If the write was completely
+     *   successful then this list is empty.
+     */
+    case class WriteFailures(value: List[ChannelProvider.WriteFailure]) extends WriteResult
+
+  }
+
   /** A large number so we don't limit the number of permits for calls to `flush` and `enqueue` */
   private val allAvailablePermits: Long = Long.MaxValue
 
-  def make[F[_]: Async](config: Config.Snowflake): Resource[F, ChannelProvider[F]] =
+  def make[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, ChannelProvider[F]] =
     for {
-      client <- createClient(config)
+      client <- createClient(config, batchingConfig: Config.Batching)
       hs <- Hotswap.create[F, SnowflakeStreamingIngestChannel]
       channel <- Resource.eval(hs.swap(createChannel(config, client)))
       ref <- Resource.eval(Ref[F].of(channel))
@@ -94,8 +123,26 @@ object ChannelProvider {
     next: Resource[F, SnowflakeStreamingIngestChannel]
   ): ChannelProvider[F] =
     new ChannelProvider[F] {
+      def reset: F[Unit] =
+        withAllPermits(sem) { // Must have **all** permits so we don't conflict with a write
+          ref.get.flatMap { channel =>
+            if (channel.isValid())
+              // We might have concurrent fibers calling `reset`.  This just means another fiber
+              // has already reset this channel.
+              Sync[F].unit
+            else
+              Sync[F].uncancelable { _ =>
+                for {
+                  _ <- hs.clear
+                  channel <- hs.swap(next)
+                  _ <- ref.set(channel)
+                } yield ()
+              }
+          }
+        }
+
       def withClosedChannel[A](fa: F[A]): F[A] =
-        withAllPermits(sem) {
+        withAllPermits(sem) { // Must have **all** permites so we don't conflict with a write
           Sync[F].uncancelable { _ =>
             for {
               _ <- hs.clear
@@ -106,21 +153,20 @@ object ChannelProvider {
           }
         }
 
-      def enqueue(rows: Seq[Map[String, AnyRef]]): F[List[EnqueueFailure]] =
-        sem.permit.use { _ =>
-          for {
-            channel <- ref.get
-            response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
-          } yield parseResponse(response)
-        }
-
-      def flush: F[Unit] =
-        sem.permit.use { _ =>
-          for {
-            channel <- ref.get
-            _ <- flushChannel[F](channel)
-          } yield ()
-        }
+      def write(rows: Seq[Map[String, AnyRef]]): F[WriteResult] =
+        sem.permit
+          .use[WriteResult] { _ =>
+            for {
+              channel <- ref.get
+              response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
+              _ <- flushChannel[F](channel)
+              isValid <- Sync[F].delay(channel.isValid)
+            } yield if (isValid) WriteResult.WriteFailures(parseResponse(response)) else WriteResult.ChannelIsInvalid
+          }
+          .recover {
+            case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+              WriteResult.ChannelIsInvalid
+          }
     }
 
   /** Wraps a `F[A]` so it only runs when no other fiber is using the channel at the same time */
@@ -132,9 +178,9 @@ object ChannelProvider {
       } yield a
     }
 
-  private def parseResponse(response: InsertValidationResponse): List[EnqueueFailure] =
+  private def parseResponse(response: InsertValidationResponse): List[WriteFailure] =
     response.getInsertErrors.asScala.map { insertError =>
-      EnqueueFailure(
+      WriteFailure(
         insertError.getRowIndex,
         Option(insertError.getExtraColNames).fold(List.empty[String])(_.asScala.toList),
         insertError.getException
@@ -159,15 +205,22 @@ object ChannelProvider {
 
     Resource.make(make) { channel =>
       Logger[F].info(s"Closing channel ${config.channel}") *>
-        Async[F].fromCompletableFuture {
-          Async[F].delay {
-            channel.close()
+        Async[F]
+          .fromCompletableFuture {
+            Async[F].delay {
+              channel.close()
+            }
           }
-        }.void
+          .void
+          .recover {
+            case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+              // We have already handled errors associated with invalid channel
+              ()
+          }
     }
   }
 
-  private def channelProperties(config: Config.Snowflake): Properties = {
+  private def channelProperties(config: Config.Snowflake, batchingConfig: Config.Batching): Properties = {
     val props = new Properties()
     props.setProperty("user", config.user)
     props.setProperty("private_key", config.privateKey)
@@ -183,15 +236,19 @@ object ChannelProvider {
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_PERCENTAGE, "0")
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_BYTES, "0")
     props.setProperty(ParameterProvider.MAX_CHANNEL_SIZE_IN_BYTES, Long.MaxValue.toString)
+    props.setProperty(ParameterProvider.IO_TIME_CPU_RATIO, batchingConfig.uploadConcurrency.toString)
 
     props
   }
 
-  private def createClient[F[_]: Sync](config: Config.Snowflake): Resource[F, SnowflakeStreamingIngestClient] = {
+  private def createClient[F[_]: Sync](
+    config: Config.Snowflake,
+    batchingConfig: Config.Batching
+  ): Resource[F, SnowflakeStreamingIngestClient] = {
     val make = Sync[F].delay {
       SnowflakeStreamingIngestClientFactory
         .builder("snowplow") // client name is not important
-        .setProperties(channelProperties(config))
+        .setProperties(channelProperties(config, batchingConfig))
         // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
         .build
     }

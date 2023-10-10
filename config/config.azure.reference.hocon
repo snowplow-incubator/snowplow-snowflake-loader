@@ -66,6 +66,19 @@
     }
 
   }
+
+  "batching": {
+
+    # - Events are emitted to Snowflake when the batch reaches this size in bytes
+    "maxBytes": 16000000
+
+    # - Events are emitted to Snowflake for a maximum of this duration, even if the `maxBytes` size has not been reached
+    "maxDelay": "1 second"
+
+    # - How many batches can we send simultaneously over the network to Snowflake.
+    "uploadConcurrency":  1
+  }
+
   "monitoring": {
     "metrics": {
 

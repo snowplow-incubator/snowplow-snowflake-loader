@@ -46,7 +46,7 @@ object Environment {
       xa <- Resource.eval(SQLUtils.transactor[F](config.output.good))
       _ <- Resource.eval(SQLUtils.createTable(config.output.good, xa))
       tblManager = TableManager.fromTransactor(config.output.good, xa)
-      channelProvider <- ChannelProvider.make(config.output.good)
+      channelProvider <- ChannelProvider.make(config.output.good, config.batching)
     } yield Environment(
       appInfo         = appInfo,
       source          = source(config.input),

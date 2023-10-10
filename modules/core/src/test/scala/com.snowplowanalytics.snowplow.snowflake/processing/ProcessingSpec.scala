@@ -32,6 +32,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     Alter the Snowflake table when the ChannelProvider reports missing columns $e4
     Emit BadRows when the ChannelProvider reports a problem with the data $e5
     Abort processing and don't ack events when the ChannelProvider reports a runtime error $e6
+    Reset the Channel when the ChannelProvider reports the channel has become invalid $e7
   """
 
   def e1 =
@@ -42,9 +43,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.EnqueuedRows(2),
-        Action.EnqueuedRows(2),
-        Action.FlushedChannel,
+        Action.WroteRowsToSnowflake(4),
         Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
         Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
@@ -78,10 +77,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.EnqueuedRows(2),
-        Action.EnqueuedRows(2),
-        Action.EnqueuedRows(2),
-        Action.FlushedChannel,
+        Action.WroteRowsToSnowflake(6),
         Action.SentToBad(6),
         Action.AddedGoodCountMetric(6),
         Action.AddedBadCountMetric(6),
@@ -91,10 +87,12 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e4 = {
     val mockedChannelResponses = List(
-      List(
-        ChannelProvider.EnqueueFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+      ChannelProvider.WriteResult.WriteFailures(
+        List(
+          ChannelProvider.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+        )
       ),
-      Nil
+      ChannelProvider.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -104,12 +102,11 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.EnqueuedRows(1),
+        Action.WroteRowsToSnowflake(1),
         Action.ClosedChannel,
         Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
         Action.OpenedChannel,
-        Action.EnqueuedRows(1),
-        Action.FlushedChannel,
+        Action.WroteRowsToSnowflake(1),
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
         Action.Checkpointed(List(inputs(0).ack))
@@ -119,10 +116,12 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e5 = {
     val mockedChannelResponses = List(
-      List(
-        ChannelProvider.EnqueueFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+      ChannelProvider.WriteResult.WriteFailures(
+        List(
+          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+        )
       ),
-      Nil
+      ChannelProvider.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -132,8 +131,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.EnqueuedRows(1),
-        Action.FlushedChannel,
+        Action.WroteRowsToSnowflake(1),
         Action.SentToBad(1),
         Action.AddedGoodCountMetric(1),
         Action.AddedBadCountMetric(1),
@@ -144,10 +142,12 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e6 = {
     val mockedChannelResponses = List(
-      List(
-        ChannelProvider.EnqueueFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+      ChannelProvider.WriteResult.WriteFailures(
+        List(
+          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+        )
       ),
-      Nil
+      ChannelProvider.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -157,7 +157,30 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.EnqueuedRows(1)
+        Action.WroteRowsToSnowflake(1)
+      )
+    )
+  }
+
+  def e7 = {
+    val mockedChannelResponses = List(
+      ChannelProvider.WriteResult.ChannelIsInvalid,
+      ChannelProvider.WriteResult.WriteFailures(Nil)
+    )
+
+    for {
+      inputs <- generateEvents.take(1).compile.toList
+      control <- MockEnvironment.build(inputs, mockedChannelResponses)
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.ClosedChannel,
+        Action.OpenedChannel,
+        Action.WroteRowsToSnowflake(2),
+        Action.AddedGoodCountMetric(2),
+        Action.AddedBadCountMetric(0),
+        Action.Checkpointed(List(inputs(0).ack))
       )
     )
   }
