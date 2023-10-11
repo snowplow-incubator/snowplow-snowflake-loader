@@ -17,7 +17,7 @@ import net.snowflake.ingest.utils.SnowflakeURL
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
-import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.loaders.runtime.{Metrics => CommonMetrics, Telemetry}
 
 case class Config[+Source, +Sink](
   input: Source,

@@ -12,7 +12,7 @@ import cats.effect.kernel.Ref
 import cats.implicits._
 import fs2.Stream
 
-import com.snowplowanalytics.snowplow.loaders.{Metrics => CommonMetrics}
+import com.snowplowanalytics.snowplow.loaders.runtime.{Metrics => CommonMetrics}
 
 trait Metrics[F[_]] {
   def addGood(count: Int): F[Unit]

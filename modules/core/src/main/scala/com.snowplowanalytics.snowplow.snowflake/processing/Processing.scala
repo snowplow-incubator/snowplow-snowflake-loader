@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Pr
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.snowflake.{Config, Environment}
-import com.snowplowanalytics.snowplow.loaders.Transform
+import com.snowplowanalytics.snowplow.loaders.common.Transform
 
 object Processing {
 
@@ -118,7 +118,7 @@ object Processing {
 
   /** Parse raw bytes into Event using analytics sdk */
   private def parseBytes[F[_]: Monad](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
-    _.evalMap { case TokenedEvents(list, token) =>
+    _.evalMap { case TokenedEvents(list, token, _) =>
       Foldable[List].foldM(list, ParsedBatch(Nil, Nil, 0L, token)) { case (acc, bytes) =>
         Applicative[F].pure {
           val bytesSize   = bytes.capacity

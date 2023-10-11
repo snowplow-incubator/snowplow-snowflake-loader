@@ -16,7 +16,7 @@ import scala.concurrent.duration.DurationInt
 
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.loaders.AppInfo
+import com.snowplowanalytics.snowplow.loaders.runtime.AppInfo
 
 abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   info: AppInfo

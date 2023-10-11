@@ -18,7 +18,7 @@ import com.monovore.decline.Opts
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.Processing
-import com.snowplowanalytics.snowplow.loaders.{AppInfo, ConfigParser, LogUtils, Telemetry}
+import com.snowplowanalytics.snowplow.loaders.runtime.{AppInfo, ConfigParser, LogUtils, Telemetry}
 
 import java.nio.file.Path
 

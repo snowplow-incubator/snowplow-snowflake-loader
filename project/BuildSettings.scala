@@ -41,7 +41,7 @@ object BuildSettings {
   lazy val appSettings = Seq(
     buildInfoKeys := Seq[BuildInfoKey](dockerAlias, name, version),
     buildInfoPackage := "com.snowplowanalytics.snowplow.snowflake",
-    buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.AppInfo")
+    buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.loaders.runtime.AppInfo")
   ) ++ commonSettings
 
   lazy val kafkaSettings = appSettings ++ Seq(

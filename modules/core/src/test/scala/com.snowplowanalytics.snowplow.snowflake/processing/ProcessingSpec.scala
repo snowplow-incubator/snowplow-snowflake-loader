@@ -70,7 +70,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       bads <- generateBadlyFormatted.take(3).compile.toList
       goods <- generateEvents.take(3).compile.toList
       inputs = bads.zip(goods).map { case (bad, good) =>
-                 TokenedEvents(bad.events ::: good.events, good.ack)
+                 TokenedEvents(bad.events ::: good.events, good.ack, None)
                }
       control <- MockEnvironment.build(inputs)
       _ <- Processing.stream(control.environment).compile.drain
@@ -202,7 +202,7 @@ object ProcessingSpec {
         val serialized = List(event1, event2).map { e =>
           ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
         }
-        TokenedEvents(serialized, ack)
+        TokenedEvents(serialized, ack, None)
       }
     }.repeat
 
@@ -210,7 +210,7 @@ object ProcessingSpec {
     Stream.eval {
       IO.unique.map { token =>
         val serialized = List("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
-        TokenedEvents(serialized, token)
+        TokenedEvents(serialized, token, None)
       }
     }.repeat
 
