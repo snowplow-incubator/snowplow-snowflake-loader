@@ -13,6 +13,7 @@ import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
 import net.snowflake.ingest.utils.SnowflakeURL
+import com.comcast.ip4s.Port
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
@@ -82,9 +83,12 @@ object Config {
 
   type Sentry = SentryM[Id]
 
+  case class HealthProbe(port: Port, unhealthyLatency: FiniteDuration)
+
   case class Monitoring(
     metrics: Metrics,
-    sentry: Option[Sentry]
+    sentry: Option[Sentry],
+    healthProbe: HealthProbe
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
@@ -104,8 +108,12 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder    = deriveConfiguredDecoder[Metrics]
-    implicit val monitoringDecoder = deriveConfiguredDecoder[Monitoring]
+    implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
+    implicit val portDecoder = Decoder.decodeInt.emap { port =>
+      Port.fromInt(port).toRight("Invalid port")
+    }
+    implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
+    implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

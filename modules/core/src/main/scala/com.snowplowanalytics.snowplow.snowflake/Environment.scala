@@ -8,6 +8,7 @@
 package com.snowplowanalytics.snowplow.snowflake
 
 import cats.implicits._
+import cats.Functor
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
 import org.http4s.client.Client
@@ -17,7 +18,7 @@ import io.sentry.Sentry
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
-import com.snowplowanalytics.snowplow.loaders.runtime.AppInfo
+import com.snowplowanalytics.snowplow.loaders.runtime.{AppInfo, HealthProbe}
 
 case class Environment[F[_]](
   appInfo: AppInfo,
@@ -35,21 +36,23 @@ object Environment {
   def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     config: Config[SourceConfig, SinkConfig],
     appInfo: AppInfo,
-    source: SourceConfig => SourceAndAck[F],
-    sink: SinkConfig => Resource[F, Sink[F]]
+    toSource: SourceConfig => F[SourceAndAck[F]],
+    toSink: SinkConfig => Resource[F, Sink[F]]
   ): Resource[F, Environment[F]] =
     for {
       _ <- enableSentry[F](appInfo, config.monitoring.sentry)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      badSink <- sink(config.output.bad)
+      badSink <- toSink(config.output.bad)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       xa <- Resource.eval(SQLUtils.transactor[F](config.output.good))
       _ <- Resource.eval(SQLUtils.createTable(config.output.good, xa))
       tblManager = TableManager.fromTransactor(config.output.good, xa)
       channelProvider <- ChannelProvider.make(config.output.good, config.batching)
+      sourceAndAck <- Resource.eval(toSource(config.input))
+      _ <- HealthProbe.resource(config.monitoring.healthProbe.port, isHealthy(config.monitoring.healthProbe, sourceAndAck))
     } yield Environment(
       appInfo         = appInfo,
-      source          = source(config.input),
+      source          = sourceAndAck,
       badSink         = badSink,
       httpClient      = httpClient,
       tblManager      = tblManager,
@@ -77,6 +80,14 @@ object Environment {
         }
       case None =>
         Resource.unit[F]
+    }
+
+  private def isHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
+    source.processingLatency.map { latency =>
+      if (latency > config.unhealthyLatency)
+        HealthProbe.Unhealthy(show"Processing latency is $latency")
+      else
+        HealthProbe.Healthy
     }
 
 }

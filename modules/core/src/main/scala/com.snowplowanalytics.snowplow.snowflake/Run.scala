@@ -28,7 +28,7 @@ object Run {
 
   def fromCli[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
     appInfo: AppInfo,
-    toSource: SourceConfig => SourceAndAck[F],
+    toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]]
   ): Opts[F[ExitCode]] = {
     val configPathOpt = Opts.option[Path]("config", help = "path to config file")
@@ -37,7 +37,7 @@ object Run {
 
   private def fromConfigPaths[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
     appInfo: AppInfo,
-    toSource: SourceConfig => SourceAndAck[F],
+    toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],
     pathToConfig: Path
   ): F[ExitCode] = {
@@ -55,7 +55,7 @@ object Run {
 
   private def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     appInfo: AppInfo,
-    toSource: SourceConfig => SourceAndAck[F],
+    toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],
     config: Config[SourceConfig, SinkConfig]
   ): F[ExitCode] =

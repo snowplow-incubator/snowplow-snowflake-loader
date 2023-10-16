@@ -17,7 +17,7 @@ import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
 import com.snowplowanalytics.snowplow.loaders.runtime.AppInfo
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
@@ -91,6 +91,8 @@ object MockEnvironment {
             state.update(_ :+ Checkpointed(chunk.toList))
           }
           .drain
+
+      def processingLatency: IO[FiniteDuration] = IO.pure(Duration.Zero)
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>

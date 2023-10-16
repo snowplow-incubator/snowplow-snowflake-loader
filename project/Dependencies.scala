@@ -27,7 +27,7 @@ object Dependencies {
     val awsSdk2   = "2.20.135"
 
     // Snowplow
-    val streams = "0.1.0-M4"
+    val streams = "0.1.0-M5"
 
     // tests
     val specs2           = "4.20.0"
@@ -50,7 +50,6 @@ object Dependencies {
   val jaxb            = "javax.xml.bind"         % "jaxb-api"             % V.jaxb
   val stsSdk2         = "software.amazon.awssdk" % "sts"                  % V.awsSdk2
 
-  // snowplow: Note jackson-databind 2.14.x is incompatible with Spark
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
   val kafka       = "com.snowplowanalytics" %% "kafka"          % V.streams
