@@ -18,7 +18,7 @@ import com.monovore.decline.Opts
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.Processing
-import com.snowplowanalytics.snowplow.loaders.runtime.{AppInfo, ConfigParser, LogUtils, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{AppInfo, ConfigParser, LogUtils, Telemetry}
 
 import java.nio.file.Path
 
@@ -44,13 +44,18 @@ object Run {
 
     val eitherT = for {
       config <- ConfigParser.configFromFile[F, Config[SourceConfig, SinkConfig]](pathToConfig)
-      _ <- EitherT.right[ExitCode](fromConfig(appInfo, toSource, toBadSink, config))
+      _ <- EitherT.right[String](fromConfig(appInfo, toSource, toBadSink, config))
     } yield ExitCode.Success
 
-    eitherT.merge.handleErrorWith { e =>
-      Logger[F].error(e)("Exiting") >>
-        LogUtils.prettyLogException(e).as(ExitCode.Error)
-    }
+    eitherT
+      .leftSemiflatMap { s: String =>
+        Logger[F].error(s).as(ExitCode.Error)
+      }
+      .merge
+      .handleErrorWith { e =>
+        Logger[F].error(e)("Exiting") >>
+          LogUtils.prettyLogException(e).as(ExitCode.Error)
+      }
   }
 
   private def fromConfig[F[_]: Async, SourceConfig, SinkConfig](

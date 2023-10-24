@@ -27,7 +27,7 @@ object Dependencies {
     val awsSdk2   = "2.20.135"
 
     // Snowplow
-    val streams = "0.1.0-M5"
+    val streams = "0.1.0-M6"
 
     // tests
     val specs2           = "4.20.0"
@@ -55,6 +55,7 @@ object Dependencies {
   val kafka       = "com.snowplowanalytics" %% "kafka"          % V.streams
   val pubsub      = "com.snowplowanalytics" %% "pubsub"         % V.streams
   val loaders     = "com.snowplowanalytics" %% "loaders-common" % V.streams
+  val runtime     = "com.snowplowanalytics" %% "runtime-common" % V.streams
 
   // tests
   val specs2           = "org.specs2"    %% "specs2-core"                % V.specs2           % Test
@@ -63,6 +64,7 @@ object Dependencies {
   val coreDependencies = Seq(
     streamsCore,
     loaders,
+    runtime,
     catsRetry,
     blazeClient,
     decline,

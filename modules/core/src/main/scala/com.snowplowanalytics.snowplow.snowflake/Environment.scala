@@ -18,7 +18,7 @@ import io.sentry.Sentry
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
-import com.snowplowanalytics.snowplow.loaders.runtime.{AppInfo, HealthProbe}
+import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
 
 case class Environment[F[_]](
   appInfo: AppInfo,

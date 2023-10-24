@@ -15,7 +15,7 @@ import fs2.Stream
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
-import com.snowplowanalytics.snowplow.loaders.runtime.AppInfo
+import com.snowplowanalytics.snowplow.runtime.AppInfo
 
 import scala.concurrent.duration.{Duration, DurationInt, FiniteDuration}
 

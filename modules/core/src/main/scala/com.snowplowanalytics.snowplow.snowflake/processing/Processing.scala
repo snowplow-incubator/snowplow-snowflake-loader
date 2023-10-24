@@ -26,7 +26,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Pr
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.snowflake.{Config, Environment}
-import com.snowplowanalytics.snowplow.loaders.common.Transform
+import com.snowplowanalytics.snowplow.loaders.transform.Transform
 
 object Processing {
 

@@ -18,7 +18,7 @@ import com.comcast.ip4s.Port
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
-import com.snowplowanalytics.snowplow.loaders.runtime.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
 
 case class Config[+Source, +Sink](
   input: Source,
