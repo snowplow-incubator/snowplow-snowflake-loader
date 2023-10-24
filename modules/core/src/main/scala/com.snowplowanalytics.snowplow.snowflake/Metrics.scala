@@ -17,6 +17,7 @@ import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics}
 trait Metrics[F[_]] {
   def addGood(count: Int): F[Unit]
   def addBad(count: Int): F[Unit]
+  def setLatencyMillis(latencyMillis: Long): F[Unit]
 
   def report: Stream[F, Nothing]
 }
@@ -28,17 +29,19 @@ object Metrics {
 
   private case class State(
     good: Int,
-    bad: Int
+    bad: Int,
+    latencyMillis: Long
   ) extends CommonMetrics.State {
     def toKVMetrics: List[CommonMetrics.KVMetric] =
       List(
         KVMetric.CountGood(good),
-        KVMetric.CountBad(bad)
+        KVMetric.CountBad(bad),
+        KVMetric.LatencyMillis(latencyMillis)
       )
   }
 
   private object State {
-    def empty: State = State(0, 0)
+    def empty: State = State(0, 0, 0L)
   }
 
   private def impl[F[_]: Async](config: Config.Metrics, ref: Ref[F, State]): Metrics[F] =
@@ -47,6 +50,8 @@ object Metrics {
         ref.update(s => s.copy(good = s.good + count))
       def addBad(count: Int): F[Unit] =
         ref.update(s => s.copy(bad = s.bad + count))
+      def setLatencyMillis(latencyMillis: Long): F[Unit] =
+        ref.update(s => s.copy(latencyMillis = s.latencyMillis.max(latencyMillis)))
     }
 
   private object KVMetric {
@@ -61,6 +66,12 @@ object Metrics {
       val key        = "events_bad"
       val value      = v.toString
       val metricType = CommonMetrics.MetricType.Count
+    }
+
+    final case class LatencyMillis(v: Long) extends CommonMetrics.KVMetric {
+      val key        = "latency_millis"
+      val value      = v.toString
+      val metricType = CommonMetrics.MetricType.Gauge
     }
 
   }

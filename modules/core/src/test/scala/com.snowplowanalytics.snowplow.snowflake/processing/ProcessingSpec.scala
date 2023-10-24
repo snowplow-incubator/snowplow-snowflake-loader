@@ -11,10 +11,13 @@ import cats.effect.IO
 import fs2.Stream
 import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
+import cats.effect.testkit.TestControl
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 
 import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
+import java.time.Instant
+import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment
@@ -33,6 +36,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     Emit BadRows when the ChannelProvider reports a problem with the data $e5
     Abort processing and don't ack events when the ChannelProvider reports a runtime error $e6
     Reset the Channel when the ChannelProvider reports the channel has become invalid $e7
+    Set the latency metric based off the message timestamp $e8
   """
 
   def e1 =
@@ -183,6 +187,35 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.Checkpointed(List(inputs(0).ack))
       )
     )
+  }
+
+  def e8 = {
+    val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime = Instant.parse("2023-10-24T10:00:42.123Z")
+
+    val io = for {
+      inputs <- generateEvents.take(2).compile.toList.map {
+                  _.map {
+                    _.copy(earliestSourceTstamp = Some(messageTime))
+                  }
+                }
+      control <- MockEnvironment.build(inputs)
+      _ <- IO.sleep(processTime.toEpochMilli.millis)
+      _ <- Processing.stream(control.environment).compile.drain
+      state <- control.state.get
+    } yield state should beEqualTo(
+      Vector(
+        Action.SetLatencyMetric(42123),
+        Action.SetLatencyMetric(42123),
+        Action.WroteRowsToSnowflake(4),
+        Action.AddedGoodCountMetric(4),
+        Action.AddedBadCountMetric(0),
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+      )
+    )
+
+    TestControl.executeEmbed(io)
+
   }
 
 }

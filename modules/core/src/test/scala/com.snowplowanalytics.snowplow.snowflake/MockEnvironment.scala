@@ -33,6 +33,7 @@ object MockEnvironment {
     case class WroteRowsToSnowflake(rowCount: Int) extends Action
     case class AddedGoodCountMetric(count: Int) extends Action
     case class AddedBadCountMetric(count: Int) extends Action
+    case class SetLatencyMetric(millis: Long) extends Action
   }
   import Action._
 
@@ -150,6 +151,9 @@ object MockEnvironment {
 
     def addGood(count: Int): IO[Unit] =
       ref.update(_ :+ AddedGoodCountMetric(count))
+
+    def setLatencyMillis(latencyMillis: Long): IO[Unit] =
+      ref.update(_ :+ SetLatencyMetric(latencyMillis))
 
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }

@@ -11,6 +11,7 @@ object Dependencies {
 
   object V {
     // Scala
+    val catsEffect       = "3.5.0"
     val catsRetry        = "3.1.0"
     val http4s           = "0.23.15"
     val decline          = "2.4.1"
@@ -27,7 +28,7 @@ object Dependencies {
     val awsSdk2   = "2.20.135"
 
     // Snowplow
-    val streams = "0.1.0-M6"
+    val streams = "0.1.0-M7"
 
     // tests
     val specs2           = "4.20.0"
@@ -58,8 +59,9 @@ object Dependencies {
   val runtime     = "com.snowplowanalytics" %% "runtime-common" % V.streams
 
   // tests
-  val specs2           = "org.specs2"    %% "specs2-core"                % V.specs2           % Test
-  val catsEffectSpecs2 = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
+  val specs2            = "org.specs2"    %% "specs2-core"                % V.specs2           % Test
+  val catsEffectSpecs2  = "org.typelevel" %% "cats-effect-testing-specs2" % V.catsEffectSpecs2 % Test
+  val catsEffectTestkit = "org.typelevel" %% "cats-effect-testkit"        % V.catsEffect       % Test
 
   val coreDependencies = Seq(
     streamsCore,
@@ -74,6 +76,7 @@ object Dependencies {
     circeGenericExtra,
     specs2,
     catsEffectSpecs2,
+    catsEffectTestkit,
     slf4j % Test
   )
 

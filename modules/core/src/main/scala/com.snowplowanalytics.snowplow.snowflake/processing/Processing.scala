@@ -25,7 +25,7 @@ import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
-import com.snowplowanalytics.snowplow.snowflake.{Config, Environment}
+import com.snowplowanalytics.snowplow.snowflake.{Config, Environment, Metrics}
 import com.snowplowanalytics.snowplow.loaders.transform.Transform
 
 object Processing {
@@ -107,7 +107,8 @@ object Processing {
   ): EventProcessor[F] = { in =>
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
-    in.through(parseBytes(badProcessor))
+    in.through(setLatency(env.metrics))
+      .through(parseBytes(badProcessor))
       .through(transform(badProcessor))
       .through(batchUp(env.batching))
       .through(writeToSnowflake(env, badProcessor))
@@ -115,6 +116,20 @@ object Processing {
       .through(sendMetrics(env))
       .through(emitTokens)
   }
+
+  private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
+    _.evalTap {
+      _.earliestSourceTstamp match {
+        case Some(t) =>
+          for {
+            now <- Sync[F].realTime
+            latencyMillis = now.toMillis - t.toEpochMilli
+            _ <- metrics.setLatencyMillis(latencyMillis)
+          } yield ()
+        case None =>
+          Applicative[F].unit
+      }
+    }
 
   /** Parse raw bytes into Event using analytics sdk */
   private def parseBytes[F[_]: Monad](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
