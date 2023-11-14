@@ -19,6 +19,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 
 import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
 case class Config[+Source, +Sink](
   input: Source,
@@ -57,25 +58,6 @@ object Config {
     statsd: Option[CommonMetrics.StatsdConfig]
   )
 
-  private case class StatsdUnresolved(
-    hostname: Option[String],
-    port: Int,
-    tags: Map[String, String],
-    period: FiniteDuration,
-    prefix: String
-  )
-
-  private object Statsd {
-
-    def resolve(statsd: StatsdUnresolved): Option[CommonMetrics.StatsdConfig] =
-      statsd match {
-        case StatsdUnresolved(Some(hostname), port, tags, period, prefix) =>
-          Some(CommonMetrics.StatsdConfig(hostname, port, tags, period, prefix))
-        case StatsdUnresolved(None, _, _, _, _) =>
-          None
-      }
-  }
-
   case class SentryM[M[_]](
     dsn: M[String],
     tags: Map[String, String]
@@ -96,11 +78,10 @@ object Config {
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
       Try(new SnowflakeURL(str))
     }
-    implicit val snowflake     = deriveConfiguredDecoder[Snowflake]
-    implicit val output        = deriveConfiguredDecoder[Output[Sink]]
-    implicit val batching      = deriveConfiguredDecoder[Batching]
-    implicit val telemetry     = deriveConfiguredDecoder[Telemetry.Config]
-    implicit val statsdDecoder = deriveConfiguredDecoder[StatsdUnresolved].map(Statsd.resolve(_))
+    implicit val snowflake = deriveConfiguredDecoder[Snowflake]
+    implicit val output    = deriveConfiguredDecoder[Output[Sink]]
+    implicit val batching  = deriveConfiguredDecoder[Batching]
+    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
         case SentryM(Some(dsn), tags) =>
@@ -108,10 +89,7 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder = deriveConfiguredDecoder[Metrics]
-    implicit val portDecoder = Decoder.decodeInt.emap { port =>
-      Port.fromInt(port).toRight("Invalid port")
-    }
+    implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     deriveConfiguredDecoder[Config[Source, Sink]]

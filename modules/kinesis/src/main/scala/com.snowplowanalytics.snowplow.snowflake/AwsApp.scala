@@ -7,18 +7,12 @@
  */
 package com.snowplowanalytics.snowplow.snowflake
 
-import cats.effect.{IO, Resource}
-
 import com.snowplowanalytics.snowplow.sources.kinesis.{KinesisSource, KinesisSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.sinks.kinesis.{KinesisSink, KinesisSinkConfig}
 
-object GcpApp extends LoaderApp[KinesisSourceConfig, Unit](BuildInfo) {
+object GcpApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInfo) {
 
   override def source: SourceProvider = KinesisSource.build(_)
 
-  override def badSink: SinkProvider = { _ =>
-    Resource.pure {
-      Sink(_ => IO.unit)
-    }
-  }
+  override def badSink: SinkProvider = KinesisSink.resource(_)
 }

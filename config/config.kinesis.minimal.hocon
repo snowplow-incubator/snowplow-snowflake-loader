@@ -13,7 +13,8 @@
       "schema": "atomic"
     }
 
-    "bad": null # TODO need kinesis sink
-
+    "bad": {
+      "streamName": "bad"
+    }
   }
 }

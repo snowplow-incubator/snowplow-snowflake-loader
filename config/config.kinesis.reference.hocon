@@ -6,19 +6,30 @@
     # -- name to use for the KCL dynamodb table
     "appName": "snowplow-snowflake-loader"
 
-    # -- TODO explain the options
+    # -- From where the app should start consuming if this is the first time it is run.
+    # -- On subsequent runs, it will always resume from where it last checkpointed.
     "initialPosition": {
+      # -- Options are `TRIM_HORIZON` for the oldest available events, `LATEST` for latest events,
+      # -- or `AT_TIMESTAMP` to start consuming from events written at a particular time.
       "type": "TRIM_HORIZON"
+
+      # -- Only required if `initialPosition.type` is AT_TIMESTAMP
+      "timestamp": "2020-07-17T10:00:00Z" # Required for AT_TIMESTAMP
     }
 
-    # -- TODO explain the options
+    # -- How the underlying Kinesis client should fetch events from the stream
     "retrievalMode": {
+      # -- Options are "Polling" for the client to poll Kinesis for more events when needed
+      # -- or "FanOut" to enabled Kinesis's Enhanced Fan Out feature using HTTP/2
       "type": "Polling"
+
+      # -- Only used if retrieval mode is type Polling. How many events the client may fetch in a single poll.
       "maxRecords": 1000
     }
 
-    # -- TODO explain what this is
-    "bufferSize": 3
+    # -- The number of batches of events which are pre-fetched from kinesis.
+    # -- Increasing this above 1 is not known to improve performance.
+    "bufferSize": 1
 
   }
 
@@ -58,7 +69,22 @@
       "jdbcQueryTimeout": "60 seconds"
     }
 
-    "bad": null # TODO need kinesis sink for failed events
+    "bad": {
+      # -- output kinesis stream for emitting failed events that could not be processed
+      "streamName": "bad"
+
+      # -- how to retry sending failed events if we exceed the kinesis write throughput limits
+      "throttledBackoffPolicy": {
+        "minBackoff": "100 milliseconds"
+        "maxBackoff": "1 second"
+      }
+
+      # -- the maximum allowed to records we are allowed to send to Kinesis in 1 PutRecords request
+      "recordLimit": 500
+
+      # -- the maximum allowed to bytes we are allowed to send to Kinesis in 1 PutRecords request
+      "byteLimit": 5242880
+    }
 
   }
 

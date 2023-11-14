@@ -8,24 +8,25 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
-import cats.{Applicative, Foldable, Monad, Semigroup}
+import cats.{Applicative, Foldable, Monad}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
-import fs2.{Pipe, Pull, Stream}
+import fs2.{Chunk, Pipe, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
-import scala.concurrent.duration.Duration
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
-import com.snowplowanalytics.snowplow.snowflake.{Config, Environment, Metrics}
+import com.snowplowanalytics.snowplow.snowflake.{Environment, Metrics}
+import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
+import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.loaders.transform.Transform
 
 object Processing {
@@ -69,7 +70,7 @@ object Processing {
     origBatchBytes: Long,
     badAccumulated: List[BadRow],
     countInserted: Int,
-    tokens: List[Unique.Token]
+    tokens: Vector[Unique.Token]
   )
 
   /**
@@ -110,7 +111,7 @@ object Processing {
     in.through(setLatency(env.metrics))
       .through(parseBytes(badProcessor))
       .through(transform(badProcessor))
-      .through(batchUp(env.batching))
+      .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
       .through(sendFailedEvents(env))
       .through(sendMetrics(env))
@@ -132,57 +133,54 @@ object Processing {
     }
 
   /** Parse raw bytes into Event using analytics sdk */
-  private def parseBytes[F[_]: Monad](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
-    _.evalMap { case TokenedEvents(list, token, _) =>
-      Foldable[List].foldM(list, ParsedBatch(Nil, Nil, 0L, token)) { case (acc, bytes) =>
-        Applicative[F].pure {
-          val bytesSize   = bytes.capacity
-          val stringified = StandardCharsets.UTF_8.decode(bytes).toString
-          Event.parse(stringified).toEither match {
-            case Right(e) =>
-              acc.copy(events = e :: acc.events, countBytes = acc.countBytes + bytesSize)
-            case Left(failure) =>
-              val payload = BadRowRawPayload(stringified)
-              val bad     = BadRow.LoaderParsingError(badProcessor, failure, payload)
-              acc.copy(bad = bad :: acc.bad, countBytes = acc.countBytes + bytesSize)
-          }
-        }
-      }
+  private def parseBytes[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
+    _.evalMap { case TokenedEvents(chunk, token, _) =>
+      for {
+        numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
+        (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { bytes =>
+                               Sync[F].delay {
+                                 val stringified = StandardCharsets.UTF_8.decode(bytes).toString
+                                 Event.parse(stringified).toEither.leftMap { case failure =>
+                                   val payload = BadRowRawPayload(stringified)
+                                   BadRow.LoaderParsingError(badProcessor, failure, payload)
+                                 }
+                               }
+                             }
+      } yield ParsedBatch(events, badRows, numBytes, token)
     }
 
   /** Transform the Event into values compatible with the snowflake ingest sdk */
   private def transform[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, ParsedBatch, BatchAfterTransform] =
-    in =>
-      for {
-        ParsedBatch(events, bad, bytes, token) <- in
-        loadTstamp <- Stream.eval(Sync[F].realTimeInstant).map(SnowflakeCaster.timestampValue)
-        result <- Stream.eval(transformBatch[F](badProcessor, events, loadTstamp))
-        (moreBad, transformed) = result.separate
-      } yield BatchAfterTransform(
-        toBeInserted   = transformed.toVector,
-        origBatchBytes = bytes,
-        badAccumulated = bad ::: moreBad,
-        countInserted  = 0,
-        tokens         = List(token)
-      )
+    _.evalMap { batch =>
+      Sync[F].realTimeInstant.flatMap { now =>
+        val loadTstamp = SnowflakeCaster.timestampValue(now)
+        transformBatch[F](badProcessor, loadTstamp, batch)
+      }
+    }
 
-  private def transformBatch[F[_]: Monad](
+  private def transformBatch[F[_]: Sync](
     badProcessor: BadRowProcessor,
-    events: List[Event],
-    loadTstamp: OffsetDateTime
-  ): F[List[Either[BadRow, (Event, Map[String, AnyRef])]]] =
-    events
-      .traverse { e =>
-        Applicative[F].pure {
+    loadTstamp: OffsetDateTime,
+    batch: ParsedBatch
+  ): F[BatchAfterTransform] =
+    Foldable[List]
+      .traverseSeparateUnordered(batch.events) { event =>
+        Sync[F].delay {
           Transform
-            .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, e)
+            .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, event)
             .map { namedValues =>
-              val asMap = namedValues.map { case Caster.NamedValue(k, v) =>
-                k -> v
-              }.toMap
-              (e, asMap + ("load_tstamp" -> loadTstamp))
+              val map = namedValues
+                .map { case Caster.NamedValue(k, v) =>
+                  k -> v
+                }
+                .toMap
+                .updated("load_tstamp", loadTstamp)
+              event -> map
             }
         }
+      }
+      .map { case (badRows, eventsWithTransforms) =>
+        BatchAfterTransform(eventsWithTransforms.toVector, batch.countBytes, badRows ::: batch.bad, 0, Vector(batch.token))
       }
 
   private def writeToSnowflake[F[_]: Async](
@@ -342,57 +340,18 @@ object Processing {
 
   private def fastGetByIndex[A](items: Vector[A], index: Long): A = items(index.toInt)
 
-  private implicit def batchedSemigroup: Semigroup[BatchAfterTransform] = new Semigroup[BatchAfterTransform] {
+  private implicit def batchable: BatchUp.Batchable[BatchAfterTransform] = new BatchUp.Batchable[BatchAfterTransform] {
     def combine(x: BatchAfterTransform, y: BatchAfterTransform): BatchAfterTransform =
       BatchAfterTransform(
         toBeInserted   = x.toBeInserted ++ y.toBeInserted,
         origBatchBytes = x.origBatchBytes + y.origBatchBytes,
         badAccumulated = x.badAccumulated ::: y.badAccumulated,
         countInserted  = x.countInserted + y.countInserted,
-        tokens         = x.tokens ::: y.tokens
+        tokens         = x.tokens ++ y.tokens
       )
-  }
 
-  private def batchUp[F[_]: Async](config: Config.Batching): Pipe[F, BatchAfterTransform, BatchAfterTransform] = {
-    def go(
-      timedPull: Pull.Timed[F, BatchAfterTransform],
-      unflushed: Option[BatchAfterTransform]
-    ): Pull[F, BatchAfterTransform, Unit] =
-      timedPull.uncons.flatMap {
-        case None => // Upstream stream has finished cleanly
-          unflushed match {
-            case None    => Pull.done
-            case Some(b) => Pull.output1(b) *> Pull.done
-          }
-        case Some((Left(_), next)) => // The timer we set has timed out.
-          unflushed match {
-            case None    => go(next, None)
-            case Some(b) => Pull.output1(b) >> go(next, None)
-          }
-        case Some((Right(pulled), next)) if pulled.isEmpty =>
-          go(next, unflushed)
-        case Some((Right(nonEmptyChunk), next)) => // Received another batch before the timer timed out
-          val combined = unflushed match {
-            case None    => nonEmptyChunk.iterator.reduce(_ |+| _)
-            case Some(b) => nonEmptyChunk.iterator.foldLeft(b)(_ |+| _)
-          }
-          if (combined.origBatchBytes > config.maxBytes)
-            for {
-              _ <- Pull.output1(combined)
-              _ <- next.timeout(Duration.Zero)
-              _ <- go(next, None)
-            } yield ()
-          else {
-            for {
-              _ <- if (unflushed.isEmpty) next.timeout(config.maxDelay) else Pull.pure(())
-              _ <- go(next, Some(combined))
-            } yield ()
-          }
-      }
-    in =>
-      in.pull.timed { timedPull =>
-        go(timedPull, None)
-      }.stream
+    def weightOf(a: BatchAfterTransform): Long =
+      a.origBatchBytes
   }
 
 }

@@ -60,12 +60,10 @@
       # -- output pubsub topic for emitting failed events that could not be processed
       "topic": "projects/myproject/topics/snowplow-bad"
 
-      # -- bad events are held in memory until we accumulate this batch size, and then sent to pubsub
+      # -- Failed sends events to pubsub in batches not exceeding this size.
       "batchSize": 100
-      # -- bad events are held in memory until we accumulate this total byte count, and then sent to pubsub
+      # -- Failed events to pubsub in batches not exceeding this size number of bytes
       "requestByteThreshold": 1000000
-      # -- pending bad events are flushed to pubsub after this delay, regardless of whether we reached the max batch size or byte count
-      "delayThreshold": "100 millis"
     }
 
   }
