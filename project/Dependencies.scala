@@ -28,7 +28,7 @@ object Dependencies {
     val awsSdk2   = "2.20.135"
 
     // Snowplow
-    val streams = "0.1.0"
+    val streams = "0.2.0-M1a"
 
     // tests
     val specs2           = "4.20.0"

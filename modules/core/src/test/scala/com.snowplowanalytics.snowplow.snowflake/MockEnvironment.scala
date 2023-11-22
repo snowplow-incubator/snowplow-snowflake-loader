@@ -97,7 +97,7 @@ object MockEnvironment {
     }
 
   private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>
-    ref.update(_ :+ SentToBad(batch.size))
+    ref.update(_ :+ SentToBad(batch.asIterable.size))
   }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
@@ -130,7 +130,7 @@ object MockEnvironment {
           _ <- actionRef.update(_ :+ OpenedChannel)
         } yield a
 
-      def write(rows: Seq[Map[String, AnyRef]]): IO[ChannelProvider.WriteResult] =
+      def write(rows: Iterable[Map[String, AnyRef]]): IO[ChannelProvider.WriteResult] =
         for {
           response <- responseRef.modify {
                         case head :: tail => (tail, head)

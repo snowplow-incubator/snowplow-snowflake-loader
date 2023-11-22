@@ -57,7 +57,7 @@ trait ChannelProvider[F[_]] {
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def write(rows: Seq[Map[String, AnyRef]]): F[ChannelProvider.WriteResult]
+  def write(rows: Iterable[Map[String, AnyRef]]): F[ChannelProvider.WriteResult]
 }
 
 object ChannelProvider {
@@ -109,7 +109,7 @@ object ChannelProvider {
 
   def make[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, ChannelProvider[F]] =
     for {
-      client <- createClient(config, batchingConfig: Config.Batching)
+      client <- createClient(config, batchingConfig)
       hs <- Hotswap.create[F, SnowflakeStreamingIngestChannel]
       channel <- Resource.eval(hs.swap(createChannel(config, client)))
       ref <- Resource.eval(Ref[F].of(channel))
@@ -153,7 +153,7 @@ object ChannelProvider {
           }
         }
 
-      def write(rows: Seq[Map[String, AnyRef]]): F[WriteResult] =
+      def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] =
         sem.permit
           .use[WriteResult] { _ =>
             for {
