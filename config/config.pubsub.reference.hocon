@@ -93,6 +93,14 @@
     "uploadConcurrency":  1
   }
 
+  # -- Schemas that won't be loaded to Snowflake. Optional, default value []
+  "skipSchemas": [
+    "iglu:com.acme/skipped1/jsonschema/1-0-0",
+    "iglu:com.acme/skipped2/jsonschema/1-0-*",
+    "iglu:com.acme/skipped3/jsonschema/1-*-*",
+    "iglu:com.acme/skipped4/jsonschema/*-*-*"
+  ]
+  
   "monitoring": {
     "metrics": {
 

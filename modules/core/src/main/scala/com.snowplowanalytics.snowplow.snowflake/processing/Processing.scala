@@ -11,6 +11,7 @@ import cats.implicits._
 import cats.{Applicative, Foldable, Monad}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import fs2.{Chunk, Pipe, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.typelevel.log4cats.Logger
@@ -108,7 +109,7 @@ object Processing {
       if (writeFailures.isEmpty)
         empty
       else {
-        val indexed = events.toIndexedSeq
+        val indexed = events.copyToIndexedSeq
         writeFailures.foldLeft(ParsedWriteResult.empty) { case (ParsedWriteResult(extraCols, eventsWithExtraCols, unexpected), failure) =>
           val event = fastGetByIndex(indexed, failure.index)
           if (failure.extraCols.nonEmpty)
@@ -126,7 +127,7 @@ object Processing {
 
     in.through(setLatency(env.metrics))
       .through(parseBytes(badProcessor))
-      .through(transform(badProcessor))
+      .through(transform(badProcessor, env.schemasToSkip))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
       .through(sendFailedEvents(env))
@@ -166,24 +167,28 @@ object Processing {
     }
 
   /** Transform the Event into values compatible with the snowflake ingest sdk */
-  private def transform[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, ParsedBatch, TransformedBatch] =
+  private def transform[F[_]: Sync](
+    badProcessor: BadRowProcessor,
+    schemasToSkip: List[SchemaCriterion]
+  ): Pipe[F, ParsedBatch, TransformedBatch] =
     _.evalMap { batch =>
       Sync[F].realTimeInstant.flatMap { now =>
         val loadTstamp = SnowflakeCaster.timestampValue(now)
-        transformBatch[F](badProcessor, loadTstamp, batch)
+        transformBatch[F](badProcessor, loadTstamp, batch, schemasToSkip)
       }
     }
 
   private def transformBatch[F[_]: Sync](
     badProcessor: BadRowProcessor,
     loadTstamp: OffsetDateTime,
-    batch: ParsedBatch
+    batch: ParsedBatch,
+    schemasToSkip: List[SchemaCriterion]
   ): F[TransformedBatch] =
     Foldable[List]
       .traverseSeparateUnordered(batch.events) { event =>
         Sync[F].delay {
           Transform
-            .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, event)
+            .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, event, schemasToSkip)
             .map { namedValues =>
               val map = namedValues
                 .map { case Caster.NamedValue(k, v) =>
@@ -271,7 +276,7 @@ object Processing {
       val mapped = notWritten match {
         case Nil => Nil
         case more =>
-          val indexed = batch.toBeInserted.toIndexedSeq
+          val indexed = batch.toBeInserted.copyToIndexedSeq
           more.map(f => (fastGetByIndex(indexed, f.index)._1, f.cause))
       }
       abortIfFatalException[F](mapped).as {

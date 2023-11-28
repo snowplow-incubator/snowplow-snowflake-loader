@@ -11,10 +11,10 @@ import cats.implicits._
 import cats.Functor
 import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
+import com.snowplowanalytics.iglu.core.SchemaCriterion
 import org.http4s.client.Client
 import org.http4s.blaze.client.BlazeClientBuilder
 import io.sentry.Sentry
-
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
@@ -28,7 +28,8 @@ case class Environment[F[_]](
   tblManager: TableManager[F],
   channelProvider: ChannelProvider[F],
   metrics: Metrics[F],
-  batching: Config.Batching
+  batching: Config.Batching,
+  schemasToSkip: List[SchemaCriterion]
 )
 
 object Environment {
@@ -58,7 +59,8 @@ object Environment {
       tblManager      = tblManager,
       channelProvider = channelProvider,
       metrics         = metrics,
-      batching        = config.batching
+      batching        = config.batching,
+      schemasToSkip   = config.skipSchemas
     )
 
   private def enableSentry[F[_]: Sync](appInfo: AppInfo, config: Option[Config.Sentry]): Resource[F, Unit] =

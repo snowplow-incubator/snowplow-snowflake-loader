@@ -64,7 +64,8 @@ object MockEnvironment {
           maxBytes          = 16000000,
           maxDelay          = 10.seconds,
           uploadConcurrency = 1
-        )
+        ),
+        schemasToSkip = List.empty
       )
       MockEnvironment(state, env)
     }

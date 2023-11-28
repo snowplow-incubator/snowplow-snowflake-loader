@@ -14,10 +14,11 @@ import io.circe.generic.extras.Configuration
 import io.circe.config.syntax._
 import net.snowflake.ingest.utils.SnowflakeURL
 import com.comcast.ip4s.Port
+import com.snowplowanalytics.iglu.core.SchemaCriterion
+import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDecoder
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
-
 import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
@@ -25,6 +26,7 @@ case class Config[+Source, +Sink](
   input: Source,
   output: Config.Output[Sink],
   batching: Config.Batching,
+  skipSchemas: List[SchemaCriterion],
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring
 )
