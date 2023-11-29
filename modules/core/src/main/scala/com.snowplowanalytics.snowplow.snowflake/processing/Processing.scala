@@ -66,8 +66,7 @@ object Processing {
    *
    * @param toBeInserted
    *   Events from this batch which have not yet been inserted. Events are dropped from this list
-   *   once they have either failed or got inserted. Implemented as a Vector because we need to do
-   *   lookup by index.
+   *   once they have either failed or got inserted.
    * @param origBatchBytes
    *   The total size in bytes of events in the original batch. Includes all good and bad events.
    * @param origBatchCount

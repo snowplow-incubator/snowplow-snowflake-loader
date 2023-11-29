@@ -6,7 +6,7 @@
     # -- name to use for the KCL dynamodb table
     "appName": "snowplow-snowflake-loader"
 
-    # -- From where the app should start consuming if this is the first time it is run.
+    # -- From where the loader should start consuming if this is the first time it is run.
     # -- On subsequent runs, it will always resume from where it last checkpointed.
     "initialPosition": {
       # -- Options are `TRIM_HORIZON` for the oldest available events, `LATEST` for latest events,
@@ -14,7 +14,7 @@
       "type": "TRIM_HORIZON"
 
       # -- Only required if `initialPosition.type` is AT_TIMESTAMP
-      "timestamp": "2020-07-17T10:00:00Z" # Required for AT_TIMESTAMP
+      "timestamp": "2023-01-01T00:00:00Z"
     }
 
     # -- How the underlying Kinesis client should fetch events from the stream

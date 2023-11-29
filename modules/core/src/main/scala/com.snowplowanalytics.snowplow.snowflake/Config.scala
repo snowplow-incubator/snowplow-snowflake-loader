@@ -83,7 +83,6 @@ object Config {
     implicit val snowflake = deriveConfiguredDecoder[Snowflake]
     implicit val output    = deriveConfiguredDecoder[Output[Sink]]
     implicit val batching  = deriveConfiguredDecoder[Batching]
-    implicit val telemetry = deriveConfiguredDecoder[Telemetry.Config]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
         case SentryM(Some(dsn), tags) =>
