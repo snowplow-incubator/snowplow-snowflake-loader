@@ -25,16 +25,14 @@ object AppHealth {
     snowflakeHealth: SnowflakeHealth[F]
   ): F[HealthProbe.Status] =
     List(
-      latencyHealth(config, source),
+      sourceIsHealthy(config, source),
       snowflakeHealth.state.get
     ).foldA
 
-  private def latencyHealth[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.processingLatency.map { latency =>
-      if (latency > config.unhealthyLatency)
-        Unhealthy(show"Processing latency is $latency")
-      else
-        Healthy
+  private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
+    source.isHealthy(config.unhealthyLatency).map {
+      case SourceAndAck.Healthy              => HealthProbe.Healthy
+      case unhealthy: SourceAndAck.Unhealthy => HealthProbe.Unhealthy(unhealthy.show)
     }
 
   private val combineHealth: (HealthProbe.Status, HealthProbe.Status) => HealthProbe.Status = {
