@@ -99,6 +99,12 @@
     # - How many batches can we send simultaneously over the network to Snowflake.
     "uploadConcurrency":  1
   }
+  
+  # Retry configuration for Snowflake operation failures
+  "retries": {
+    # Starting backoff period
+    "backoff": "30 seconds"
+  } 
 
   # -- Schemas that won't be loaded to Snowflake. Optional, default value []
   "skipSchemas": [
