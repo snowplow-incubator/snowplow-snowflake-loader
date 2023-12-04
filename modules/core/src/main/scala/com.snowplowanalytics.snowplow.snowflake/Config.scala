@@ -29,6 +29,7 @@ case class Config[+Source, +Sink](
   input: Source,
   output: Config.Output[Sink],
   batching: Config.Batching,
+  retries: Config.Retries,
   skipSchemas: List[SchemaCriterion],
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring
@@ -78,6 +79,8 @@ object Config {
     healthProbe: HealthProbe
   )
 
+  case class Retries(backoff: FiniteDuration)
+
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
@@ -96,6 +99,7 @@ object Config {
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
+    implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

@@ -10,18 +10,17 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
-import cats.implicits._
-import cats.Functor
-import cats.effect.{Async, Resource, Sync}
 import cats.effect.unsafe.implicits.global
+import cats.effect.{Async, Resource, Sync}
+import cats.implicits._
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import org.http4s.client.Client
-import org.http4s.blaze.client.BlazeClientBuilder
-import io.sentry.Sentry
-import com.snowplowanalytics.snowplow.sources.SourceAndAck
-import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
 import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
+import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, SnowflakeHealth, SnowflakeRetrying, TableManager}
+import com.snowplowanalytics.snowplow.sources.SourceAndAck
+import io.sentry.Sentry
+import org.http4s.blaze.client.BlazeClientBuilder
+import org.http4s.client.Client
 
 case class Environment[F[_]](
   appInfo: AppInfo,
@@ -44,16 +43,21 @@ object Environment {
     toSink: SinkConfig => Resource[F, Sink[F]]
   ): Resource[F, Environment[F]] =
     for {
+      snowflakeHealth <- Resource.eval(SnowflakeHealth.initUnhealthy[F])
+      sourceAndAck <- Resource.eval(toSource(config.input))
+      _ <- HealthProbe.resource(
+             config.monitoring.healthProbe.port,
+             AppHealth.isHealthy(config.monitoring.healthProbe, sourceAndAck, snowflakeHealth)
+           )
       _ <- enableSentry[F](appInfo, config.monitoring.sentry)
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       badSink <- toSink(config.output.bad)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       xa <- Resource.eval(SQLUtils.transactor[F](config.output.good))
-      _ <- Resource.eval(SQLUtils.createTable(config.output.good, xa))
-      tblManager = TableManager.fromTransactor(config.output.good, xa)
-      channelProvider <- ChannelProvider.make(config.output.good, config.batching)
-      sourceAndAck <- Resource.eval(toSource(config.input))
-      _ <- HealthProbe.resource(config.monitoring.healthProbe.port, isHealthy(config.monitoring.healthProbe, sourceAndAck))
+      _ <- Resource.eval(SnowflakeRetrying.retryIndefinitely(snowflakeHealth, config.retries)(SQLUtils.createTable(config.output.good, xa)))
+      tblManager = TableManager.fromTransactor(config.output.good, xa, snowflakeHealth, config.retries)
+      channelProvider <- ChannelProvider.make(config.output.good, snowflakeHealth, config.batching, config.retries)
+
     } yield Environment(
       appInfo         = appInfo,
       source          = sourceAndAck,
@@ -86,13 +90,4 @@ object Environment {
       case None =>
         Resource.unit[F]
     }
-
-  private def isHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.processingLatency.map { latency =>
-      if (latency > config.unhealthyLatency)
-        HealthProbe.Unhealthy(show"Processing latency is $latency")
-      else
-        HealthProbe.Healthy
-    }
-
 }

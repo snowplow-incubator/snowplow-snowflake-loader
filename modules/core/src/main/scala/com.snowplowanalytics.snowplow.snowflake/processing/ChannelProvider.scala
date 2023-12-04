@@ -110,14 +110,19 @@ object ChannelProvider {
   /** A large number so we don't limit the number of permits for calls to `flush` and `enqueue` */
   private val allAvailablePermits: Long = Long.MaxValue
 
-  def make[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, ChannelProvider[F]] =
+  def make[F[_]: Async](
+    config: Config.Snowflake,
+    snowflakeHealth: SnowflakeHealth[F],
+    batchingConfig: Config.Batching,
+    retriesConfig: Config.Retries
+  ): Resource[F, ChannelProvider[F]] =
     for {
       client <- createClient(config, batchingConfig)
-      hs <- Hotswap.create[F, SnowflakeStreamingIngestChannel]
-      channel <- Resource.eval(hs.swap(createChannel(config, client)))
+      channelResource = createChannel(config, client, snowflakeHealth, retriesConfig)
+      (hs, channel) <- Hotswap.apply(channelResource)
       ref <- Resource.eval(Ref[F].of(channel))
       sem <- Resource.eval(Semaphore[F](allAvailablePermits))
-    } yield impl(ref, hs, sem, createChannel(config, client))
+    } yield impl(ref, hs, sem, channelResource)
 
   private def impl[F[_]: Async](
     ref: Ref[F, SnowflakeStreamingIngestChannel],
@@ -192,7 +197,9 @@ object ChannelProvider {
 
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
-    client: SnowflakeStreamingIngestClient
+    client: SnowflakeStreamingIngestClient,
+    snowflakeHealth: SnowflakeHealth[F],
+    retriesConfig: Config.Retries
   ): Resource[F, SnowflakeStreamingIngestChannel] = {
     val request = OpenChannelRequest
       .builder(config.channel)
@@ -204,7 +211,9 @@ object ChannelProvider {
       .build
 
     val make = Logger[F].info(s"Opening channel ${config.channel}") *>
-      Async[F].blocking(client.openChannel(request))
+      SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
+        Async[F].blocking(client.openChannel(request))
+      }
 
     Resource.make(make) { channel =>
       Logger[F].info(s"Closing channel ${config.channel}") *>
