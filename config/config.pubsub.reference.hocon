@@ -79,19 +79,12 @@
     # - How many batches can we send simultaneously over the network to Snowflake.
     "uploadConcurrency":  1
   }
-
-  "batching": {
-
-    # - Events are emitted to Snowflake when the batch reaches this size in bytes
-    "maxBytes": 16000000
-
-    # - Events are emitted to Snowflake for a maximum of this duration, even if the `maxBytes` size has not been reached
-    "maxDelay": "1 second"
-
-    # - How many batches can we send simultaneously over the network to Snowflake.
-    # - The Snowflake SDK dictates this should be kept below the number of available runtime processors (cpu)
-    "uploadConcurrency":  1
-  }
+  
+  # Retry configuration for Snowflake operation failures
+  "retries": {
+    # Starting backoff period
+    "backoff": "30 seconds"
+  } 
 
   # -- Schemas that won't be loaded to Snowflake. Optional, default value []
   "skipSchemas": [

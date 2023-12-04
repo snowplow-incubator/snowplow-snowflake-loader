@@ -31,10 +31,12 @@ object TableManager {
 
   def fromTransactor[F[_]: Async](
     config: Config.Snowflake,
-    xa: Transactor[F]
+    xa: Transactor[F],
+    snowflakeHealth: SnowflakeHealth[F],
+    retriesConfig: Config.Retries
   ): TableManager[F] = new TableManager[F] {
 
-    def addColumns(columns: List[String]): F[Unit] =
+    def addColumns(columns: List[String]): F[Unit] = SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
       Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]") *>
         xa.rawTrans.apply {
           columns.traverse_ { col =>
@@ -45,6 +47,7 @@ object TableManager {
               }
           }
         }
+    }
   }
 
   private val reUnstruct: Regex = "^unstruct_event_.*$".r
