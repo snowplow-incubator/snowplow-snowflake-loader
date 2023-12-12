@@ -19,7 +19,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
-
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
@@ -339,7 +338,7 @@ object Processing {
       ().pure[F]
     else
       env.channelProvider.withClosedChannel {
-        env.tblManager.addColumns(extraColsRequired.toList)
+        env.tableManager.addColumns(extraColsRequired.toList)
       }
 
   private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =

@@ -7,25 +7,17 @@
  */
 package com.snowplowanalytics.snowplow.snowflake.processing
 
-import cats.implicits._
 import cats.effect.implicits._
-import cats.effect.{Async, Sync}
 import cats.effect.kernel.{Ref, Resource}
 import cats.effect.std.{Hotswap, Semaphore}
+import cats.effect.{Async, Sync}
+import cats.implicits._
+import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, Monitoring}
+import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
+import net.snowflake.ingest.streaming._
+import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
-
-import net.snowflake.ingest.streaming.{
-  InsertValidationResponse,
-  OpenChannelRequest,
-  SnowflakeStreamingIngestChannel,
-  SnowflakeStreamingIngestClient,
-  SnowflakeStreamingIngestClientFactory
-}
-import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
-import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
-
-import com.snowplowanalytics.snowplow.snowflake.Config
 
 import java.time.ZoneOffset
 import java.util.Properties
@@ -111,11 +103,12 @@ object ChannelProvider {
     config: Config.Snowflake,
     snowflakeHealth: SnowflakeHealth[F],
     batchingConfig: Config.Batching,
-    retriesConfig: Config.Retries
+    retriesConfig: Config.Retries,
+    monitoring: Monitoring[F]
   ): Resource[F, ChannelProvider[F]] =
     for {
       client <- createClient(config, batchingConfig)
-      channelResource = createChannel(config, client, snowflakeHealth, retriesConfig)
+      channelResource = createChannel(config, client, snowflakeHealth, retriesConfig, monitoring)
       (hs, channel) <- Hotswap.apply(channelResource)
       ref <- Resource.eval(Ref[F].of(channel))
       sem <- Resource.eval(Semaphore[F](allAvailablePermits))
@@ -196,7 +189,8 @@ object ChannelProvider {
     config: Config.Snowflake,
     client: SnowflakeStreamingIngestClient,
     snowflakeHealth: SnowflakeHealth[F],
-    retriesConfig: Config.Retries
+    retriesConfig: Config.Retries,
+    monitoring: Monitoring[F]
   ): Resource[F, SnowflakeStreamingIngestChannel] = {
     val request = OpenChannelRequest
       .builder(config.channel)
@@ -209,7 +203,11 @@ object ChannelProvider {
 
     val make = Logger[F].info(s"Opening channel ${config.channel}") *>
       SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
-        Async[F].blocking(client.openChannel(request))
+        Async[F]
+          .blocking(client.openChannel(request))
+          .onError { cause =>
+            monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause))
+          }
       }
 
     Resource.make(make) { channel =>

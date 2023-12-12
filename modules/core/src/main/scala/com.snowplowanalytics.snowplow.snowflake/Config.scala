@@ -8,6 +8,7 @@
 package com.snowplowanalytics.snowplow.snowflake
 
 import cats.Id
+import cats.syntax.either._
 import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
@@ -21,6 +22,7 @@ import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
 import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
+import org.http4s.{ParseFailure, Uri}
 
 case class Config[+Source, +Sink](
   input: Source,
@@ -73,8 +75,11 @@ object Config {
   case class Monitoring(
     metrics: Metrics,
     sentry: Option[Sentry],
-    healthProbe: HealthProbe
+    healthProbe: HealthProbe,
+    webhook: Option[Webhook]
   )
+
+  final case class Webhook(endpoint: Uri, tags: Map[String, String])
 
   case class Retries(backoff: FiniteDuration)
 
@@ -93,8 +98,12 @@ object Config {
         case SentryM(None, _) =>
           None
       }
+    implicit val http4sUriDecoder: Decoder[Uri] =
+      Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
+
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
+    implicit val webhookDecoder     = deriveConfiguredDecoder[Webhook]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
     deriveConfiguredDecoder[Config[Source, Sink]]
