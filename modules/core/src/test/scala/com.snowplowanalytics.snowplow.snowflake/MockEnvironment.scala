@@ -28,6 +28,7 @@ object MockEnvironment {
 
   sealed trait Action
   object Action {
+    case object InitEventsTable extends Action
     case class Checkpointed(tokens: List[Unique.Token]) extends Action
     case class SentToBad(count: Int) extends Action
     case class AlterTableAddedColumns(columns: List[String]) extends Action
@@ -60,7 +61,7 @@ object MockEnvironment {
         source          = testSourceAndAck(inputs, state),
         badSink         = testSink(state),
         httpClient      = testHttpClient,
-        tblManager      = testTableManager(state),
+        tableManager    = testTableManager(state),
         channelProvider = channelProvider,
         metrics         = testMetrics(state),
         batching = Config.Batching(
@@ -81,6 +82,10 @@ object MockEnvironment {
   }
 
   private def testTableManager(state: Ref[IO, Vector[Action]]): TableManager[IO] = new TableManager[IO] {
+
+    override def initializeEventsTable(): IO[Unit] =
+      state.update(_ :+ InitEventsTable)
+
     def addColumns(columns: List[String]): IO[Unit] =
       state.update(_ :+ AlterTableAddedColumns(columns))
   }

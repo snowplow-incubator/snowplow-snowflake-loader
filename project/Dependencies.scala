@@ -40,6 +40,7 @@ object Dependencies {
 
   val catsRetry         = "com.github.cb372" %% "cats-retry"           % V.catsRetry
   val blazeClient       = "org.http4s"       %% "http4s-blaze-client"  % V.http4s
+  val http4sCirce       = "org.http4s"       %% "http4s-circe"         % V.http4s
   val decline           = "com.monovore"     %% "decline-effect"       % V.decline
   val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
   val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
@@ -71,6 +72,7 @@ object Dependencies {
     runtime,
     catsRetry,
     blazeClient,
+    http4sCirce,
     decline,
     sentry,
     snowflakeIngest,

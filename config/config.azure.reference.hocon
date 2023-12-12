@@ -123,6 +123,16 @@
         "myTag": "xyz"
       }
     }
+    
+    # -- Report alerts to the webhook 
+    "webhook": {
+      # An actual HTTP endpoint
+      "endpoint": "https://webhook.acme.com",
+      # Set of arbitrary key-value pairs attached to the payload
+      "tags": {
+        "pipeline": "production"
+      }
+    }  
   }
 
   # -- Optional, configure telemetry
