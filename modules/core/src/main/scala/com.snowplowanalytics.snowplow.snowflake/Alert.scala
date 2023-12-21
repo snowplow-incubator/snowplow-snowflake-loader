@@ -28,7 +28,8 @@ object Alert {
     SelfDescribingData(
       schema = SchemaKey("com.snowplowanalytics.monitoring.loader", "alert", "jsonschema", SchemaVer.Full(1, 0, 0)),
       data = Json.obj(
-        "application" -> s"${appInfo.name}-${appInfo.version}".asJson,
+        "appName" -> appInfo.name.asJson,
+        "appVersion" -> appInfo.version.asJson,
         "message" -> getMessage(alert).asJson,
         "tags" -> tags.asJson
       )

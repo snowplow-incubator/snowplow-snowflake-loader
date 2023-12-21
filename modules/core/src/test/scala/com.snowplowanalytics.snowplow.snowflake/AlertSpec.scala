@@ -36,7 +36,8 @@ class AlertSpec extends Specification {
     |{
     |  "schema" : "iglu:com.snowplowanalytics.monitoring.loader/alert/jsonschema/1-0-0",
     |  "data" : {
-    |    "application" : "testApp-testVersion",
+    |    "appName" : "testApp",
+    |    "appVersion": "testVersion",
     |    "message" : "$message",
     |    "tags" : {
     |      "testTag1" : "testValue1",
