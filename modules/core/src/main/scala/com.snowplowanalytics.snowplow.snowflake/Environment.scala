@@ -12,7 +12,7 @@ import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, SnowflakeHealth, TableManager}
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, Coldswap, SnowflakeHealth, TableManager}
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import org.http4s.blaze.client.BlazeClientBuilder
 import org.http4s.client.Client
@@ -23,7 +23,7 @@ case class Environment[F[_]](
   badSink: Sink[F],
   httpClient: Client[F],
   tableManager: TableManager[F],
-  channelProvider: ChannelProvider[F],
+  channel: Coldswap[F, Channel[F]],
   metrics: Metrics[F],
   batching: Config.Batching,
   schemasToSkip: List[SchemaCriterion]
@@ -50,17 +50,17 @@ object Environment {
       badSink <- toSink(config.output.bad)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       tableManager <- Resource.eval(TableManager.make(config.output.good, snowflakeHealth, config.retries, monitoring))
-      _ <- Resource.eval(tableManager.initializeEventsTable())
-      channelProvider <- ChannelProvider.make(config.output.good, snowflakeHealth, config.batching, config.retries, monitoring)
+      channelResource <- Channel.make(config.output.good, snowflakeHealth, config.batching, config.retries, monitoring)
+      channelColdswap <- Coldswap.make(channelResource)
     } yield Environment(
-      appInfo         = appInfo,
-      source          = sourceAndAck,
-      badSink         = badSink,
-      httpClient      = httpClient,
-      tableManager    = tableManager,
-      channelProvider = channelProvider,
-      metrics         = metrics,
-      batching        = config.batching,
-      schemasToSkip   = config.skipSchemas
+      appInfo       = appInfo,
+      source        = sourceAndAck,
+      badSink       = badSink,
+      httpClient    = httpClient,
+      tableManager  = tableManager,
+      channel       = channelColdswap,
+      metrics       = metrics,
+      batching      = config.batching,
+      schemasToSkip = config.skipSchemas
     )
 }

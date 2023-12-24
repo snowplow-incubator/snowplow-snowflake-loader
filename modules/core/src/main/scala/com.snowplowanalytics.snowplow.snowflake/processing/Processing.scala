@@ -8,7 +8,7 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
-import cats.{Applicative, Foldable, Monad}
+import cats.{Applicative, Foldable}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -36,7 +36,8 @@ object Processing {
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
-    env.source.stream(eventProcessingConfig, eventProcessor(env))
+    Stream.eval(env.tableManager.initializeEventsTable()) *>
+      env.source.stream(eventProcessingConfig, eventProcessor(env))
   }
 
   /** Model used between stages of the processing pipeline */
@@ -103,7 +104,7 @@ object Processing {
   private object ParsedWriteResult {
     def empty: ParsedWriteResult = ParsedWriteResult(Set.empty, Nil, Nil)
 
-    def buildFrom(events: ListOfList[EventWithTransform], writeFailures: List[ChannelProvider.WriteFailure]): ParsedWriteResult =
+    def buildFrom(events: ListOfList[EventWithTransform], writeFailures: List[Channel.WriteFailure]): ParsedWriteResult =
       if (writeFailures.isEmpty)
         empty
       else {
@@ -118,9 +119,7 @@ object Processing {
       }
   }
 
-  private def eventProcessor[F[_]: Async](
-    env: Environment[F]
-  ): EventProcessor[F] = { in =>
+  private def eventProcessor[F[_]: Async](env: Environment[F]): EventProcessor[F] = { in =>
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
     in.through(setLatency(env.metrics))
@@ -216,19 +215,23 @@ object Processing {
     env: Environment[F],
     batch: BatchAfterTransform
   )(
-    handleFailures: List[ChannelProvider.WriteFailure] => F[BatchAfterTransform]
+    handleFailures: List[Channel.WriteFailure] => F[BatchAfterTransform]
   ): F[BatchAfterTransform] =
     if (batch.toBeInserted.isEmpty)
       batch.pure[F]
     else
       Sync[F].untilDefinedM {
-        env.channelProvider.write(batch.toBeInserted.asIterable.map(_._2)).flatMap {
-          case ChannelProvider.WriteResult.ChannelIsInvalid =>
-            // Reset the channel and immediately try again
-            env.channelProvider.reset.as(none)
-          case ChannelProvider.WriteResult.WriteFailures(notWritten) =>
-            handleFailures(notWritten).map(Some(_))
-        }
+        env.channel.opened
+          .use { channel =>
+            channel.write(batch.toBeInserted.asIterable.map(_._2))
+          }
+          .flatMap {
+            case Channel.WriteResult.ChannelIsInvalid =>
+              // Reset the channel and immediately try again
+              env.channel.closed.use_.as(none)
+            case Channel.WriteResult.WriteFailures(notWritten) =>
+              handleFailures(notWritten).map(Some(_))
+          }
       }
 
   /**
@@ -330,14 +333,14 @@ object Processing {
    * Alters the table to add any columns that were present in the Events but not currently in the
    * table
    */
-  private def handleSchemaEvolution[F[_]: Monad](
+  private def handleSchemaEvolution[F[_]: Sync](
     env: Environment[F],
     extraColsRequired: Set[String]
   ): F[Unit] =
     if (extraColsRequired.isEmpty)
       ().pure[F]
     else
-      env.channelProvider.withClosedChannel {
+      env.channel.closed.surround {
         env.tableManager.addColumns(extraColsRequired.toList)
       }
 
