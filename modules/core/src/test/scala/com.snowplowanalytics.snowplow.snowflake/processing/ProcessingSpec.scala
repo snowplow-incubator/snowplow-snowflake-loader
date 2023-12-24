@@ -35,187 +35,207 @@ class ProcessingSpec extends Specification with CatsEffect {
     Insert events to Snowflake and ack the events $e1
     Emit BadRows when there are badly formatted events $e2
     Write good batches and bad events when input contains both $e3
-    Alter the Snowflake table when the ChannelProvider reports missing columns $e4
-    Emit BadRows when the ChannelProvider reports a problem with the data $e5
-    Abort processing and don't ack events when the ChannelProvider reports a runtime error $e6
-    Reset the Channel when the ChannelProvider reports the channel has become invalid $e7
+    Alter the Snowflake table when the Channel reports missing columns $e4
+    Emit BadRows when the Channel reports a problem with the data $e5
+    Abort processing and don't ack events when the Channel reports a runtime error $e6
+    Reset the Channel when the Channel reports the channel has become invalid $e7
     Set the latency metric based off the message timestamp $e8
   """
 
   def e1 =
-    for {
-      inputs <- generateEvents.take(2).compile.toList
-      control <- MockEnvironment.build(inputs)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.WroteRowsToSnowflake(4),
-        Action.AddedGoodCountMetric(4),
-        Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+    setup(generateEvents.take(2).compile.toList) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(4),
+          Action.AddedGoodCountMetric(4),
+          Action.AddedBadCountMetric(0),
+          Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+        )
       )
-    )
+    }
 
   def e2 =
-    for {
-      inputs <- generateBadlyFormatted.take(3).compile.toList
-      control <- MockEnvironment.build(inputs)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.SentToBad(6),
-        Action.AddedGoodCountMetric(0),
-        Action.AddedBadCountMetric(6),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
+    setup(generateBadlyFormatted.take(3).compile.toList) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.SentToBad(6),
+          Action.AddedGoodCountMetric(0),
+          Action.AddedBadCountMetric(6),
+          Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
+        )
       )
-    )
+    }
 
-  def e3 =
-    for {
+  def e3 = {
+    val toInputs = for {
       bads <- generateBadlyFormatted.take(3).compile.toList
       goods <- generateEvents.take(3).compile.toList
-      inputs = bads.zip(goods).map { case (bad, good) =>
-                 TokenedEvents(bad.events ++ good.events, good.ack, None)
-               }
-      control <- MockEnvironment.build(inputs)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.WroteRowsToSnowflake(6),
-        Action.SentToBad(6),
-        Action.AddedGoodCountMetric(6),
-        Action.AddedBadCountMetric(6),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
+    } yield bads.zip(goods).map { case (bad, good) =>
+      TokenedEvents(bad.events ++ good.events, good.ack, None)
+    }
+    setup(toInputs) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(6),
+          Action.SentToBad(6),
+          Action.AddedGoodCountMetric(6),
+          Action.AddedBadCountMetric(6),
+          Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
+        )
       )
-    )
+    }
+  }
 
   def e4 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+          Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
-    for {
-      inputs <- generateEvents.take(1).compile.toList
-      control <- MockEnvironment.build(inputs, mockedChannelResponses)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.WroteRowsToSnowflake(1),
-        Action.ClosedChannel,
-        Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
-        Action.OpenedChannel,
-        Action.WroteRowsToSnowflake(1),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack))
+    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(1),
+          Action.ClosedChannel,
+          Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(1),
+          Action.AddedGoodCountMetric(2),
+          Action.AddedBadCountMetric(0),
+          Action.Checkpointed(List(inputs(0).ack))
+        )
       )
-    )
+    }
   }
 
   def e5 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
-    for {
-      inputs <- generateEvents.take(1).compile.toList
-      control <- MockEnvironment.build(inputs, mockedChannelResponses)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.WroteRowsToSnowflake(1),
-        Action.SentToBad(1),
-        Action.AddedGoodCountMetric(1),
-        Action.AddedBadCountMetric(1),
-        Action.Checkpointed(List(inputs(0).ack))
+    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(1),
+          Action.SentToBad(1),
+          Action.AddedGoodCountMetric(1),
+          Action.AddedBadCountMetric(1),
+          Action.Checkpointed(List(inputs(0).ack))
+        )
       )
-    )
+    }
   }
 
   def e6 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
-    for {
-      inputs <- generateEvents.take(1).compile.toList
-      control <- MockEnvironment.build(inputs, mockedChannelResponses)
-      _ <- Processing.stream(control.environment).compile.drain.handleError(_ => ())
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.WroteRowsToSnowflake(1)
+    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (_, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain.handleError(_ => ())
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(1)
+        )
       )
-    )
+    }
   }
 
   def e7 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.ChannelIsInvalid,
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.ChannelIsInvalid,
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
-    for {
-      inputs <- generateEvents.take(1).compile.toList
-      control <- MockEnvironment.build(inputs, mockedChannelResponses)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.ClosedChannel,
-        Action.OpenedChannel,
-        Action.WroteRowsToSnowflake(2),
-        Action.AddedGoodCountMetric(2),
-        Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack))
+    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.ClosedChannel,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(2),
+          Action.AddedGoodCountMetric(2),
+          Action.AddedBadCountMetric(0),
+          Action.Checkpointed(List(inputs(0).ack))
+        )
       )
-    )
+    }
   }
 
   def e8 = {
     val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
     val processTime = Instant.parse("2023-10-24T10:00:42.123Z")
 
-    val io = for {
-      inputs <- generateEvents.take(2).compile.toList.map {
-                  _.map {
-                    _.copy(earliestSourceTstamp = Some(messageTime))
-                  }
-                }
-      control <- MockEnvironment.build(inputs)
-      _ <- IO.sleep(processTime.toEpochMilli.millis)
-      _ <- Processing.stream(control.environment).compile.drain
-      state <- control.state.get
-    } yield state should beEqualTo(
-      Vector(
-        Action.SetLatencyMetric(42123),
-        Action.SetLatencyMetric(42123),
-        Action.WroteRowsToSnowflake(4),
-        Action.AddedGoodCountMetric(4),
-        Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+    val toInputs = generateEvents.take(2).compile.toList.map {
+      _.map {
+        _.copy(earliestSourceTstamp = Some(messageTime))
+      }
+    }
+
+    val io = setup(toInputs) { case (inputs, control) =>
+      for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
+        _ <- Processing.stream(control.environment).compile.drain
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.SetLatencyMetric(42123),
+          Action.SetLatencyMetric(42123),
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(4),
+          Action.AddedGoodCountMetric(4),
+          Action.AddedBadCountMetric(0),
+          Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+        )
       )
-    )
+    }
 
     TestControl.executeEmbed(io)
 
@@ -224,6 +244,18 @@ class ProcessingSpec extends Specification with CatsEffect {
 }
 
 object ProcessingSpec {
+
+  def setup[A](
+    toInputs: IO[List[TokenedEvents]],
+    channelResponses: List[Channel.WriteResult] = Nil
+  )(
+    f: (List[TokenedEvents], MockEnvironment) => IO[A]
+  ): IO[A] =
+    toInputs.flatMap { inputs =>
+      MockEnvironment.build(inputs, channelResponses).use { control =>
+        f(inputs, control)
+      }
+    }
 
   def generateEvents: Stream[IO, TokenedEvents] =
     Stream.eval {
