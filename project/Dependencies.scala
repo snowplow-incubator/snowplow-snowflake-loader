@@ -18,6 +18,7 @@ object Dependencies {
     val circe            = "0.14.3"
     val betterMonadicFor = "0.3.1"
     val doobie           = "1.0.0-RC4"
+    val kindProjector    = "0.13.2"
 
     // java
     val slf4j     = "2.0.7"
@@ -43,6 +44,7 @@ object Dependencies {
   val circeGenericExtra = "io.circe"         %% "circe-generic-extras" % V.circe
   val betterMonadicFor  = "com.olegpy"       %% "better-monadic-for"   % V.betterMonadicFor
   val doobie            = "org.tpolecat"     %% "doobie-core"          % V.doobie
+  val kindProjector     = "org.typelevel"    %% "kind-projector"       % V.kindProjector cross CrossVersion.full
 
   // java
   val slf4j           = "org.slf4j"              % "slf4j-simple"         % V.slf4j

@@ -32,10 +32,10 @@ class ProcessingSpec extends Specification with CatsEffect {
     Insert events to Snowflake and ack the events $e1
     Emit BadRows when there are badly formatted events $e2
     Write good batches and bad events when input contains both $e3
-    Alter the Snowflake table when the ChannelProvider reports missing columns $e4
-    Emit BadRows when the ChannelProvider reports a problem with the data $e5
-    Abort processing and don't ack events when the ChannelProvider reports a runtime error $e6
-    Reset the Channel when the ChannelProvider reports the channel has become invalid $e7
+    Alter the Snowflake table when the Channel reports missing columns $e4
+    Emit BadRows when the Channel reports a problem with the data $e5
+    Abort processing and don't ack events when the Channel reports a runtime error $e6
+    Reset the Channel when the Channel reports the channel has become invalid $e7
     Set the latency metric based off the message timestamp $e8
   """
 
@@ -47,10 +47,13 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
+        Action.OpenedChannel,
         Action.WroteRowsToSnowflake(4),
         Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack)),
+        Action.ClosedChannel
       )
     )
 
@@ -62,6 +65,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
         Action.SentToBad(6),
         Action.AddedGoodCountMetric(0),
         Action.AddedBadCountMetric(6),
@@ -81,22 +85,25 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
+        Action.OpenedChannel,
         Action.WroteRowsToSnowflake(6),
         Action.SentToBad(6),
         Action.AddedGoodCountMetric(6),
         Action.AddedBadCountMetric(6),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack))
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack, inputs(2).ack)),
+        Action.ClosedChannel
       )
     )
 
   def e4 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+          Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -106,6 +113,8 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
+        Action.OpenedChannel,
         Action.WroteRowsToSnowflake(1),
         Action.ClosedChannel,
         Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
@@ -113,19 +122,20 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.WroteRowsToSnowflake(1),
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack))
+        Action.Checkpointed(List(inputs(0).ack)),
+        Action.ClosedChannel
       )
     )
   }
 
   def e5 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -135,23 +145,26 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
+        Action.OpenedChannel,
         Action.WroteRowsToSnowflake(1),
         Action.SentToBad(1),
         Action.AddedGoodCountMetric(1),
         Action.AddedBadCountMetric(1),
-        Action.Checkpointed(List(inputs(0).ack))
+        Action.Checkpointed(List(inputs(0).ack)),
+        Action.ClosedChannel
       )
     )
   }
 
   def e6 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.WriteFailures(
+      Channel.WriteResult.WriteFailures(
         List(
-          ChannelProvider.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
         )
       ),
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -161,15 +174,18 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
-        Action.WroteRowsToSnowflake(1)
+        Action.InitEventsTable,
+        Action.OpenedChannel,
+        Action.WroteRowsToSnowflake(1),
+        Action.ClosedChannel
       )
     )
   }
 
   def e7 = {
     val mockedChannelResponses = List(
-      ChannelProvider.WriteResult.ChannelIsInvalid,
-      ChannelProvider.WriteResult.WriteFailures(Nil)
+      Channel.WriteResult.ChannelIsInvalid,
+      Channel.WriteResult.WriteFailures(Nil)
     )
 
     for {
@@ -179,12 +195,15 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
+        Action.OpenedChannel,
         Action.ClosedChannel,
         Action.OpenedChannel,
         Action.WroteRowsToSnowflake(2),
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack))
+        Action.Checkpointed(List(inputs(0).ack)),
+        Action.ClosedChannel
       )
     )
   }
@@ -205,12 +224,15 @@ class ProcessingSpec extends Specification with CatsEffect {
       state <- control.state.get
     } yield state should beEqualTo(
       Vector(
+        Action.InitEventsTable,
         Action.SetLatencyMetric(42123),
         Action.SetLatencyMetric(42123),
+        Action.OpenedChannel,
         Action.WroteRowsToSnowflake(4),
         Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
-        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
+        Action.Checkpointed(List(inputs(0).ack, inputs(1).ack)),
+        Action.ClosedChannel
       )
     )
 

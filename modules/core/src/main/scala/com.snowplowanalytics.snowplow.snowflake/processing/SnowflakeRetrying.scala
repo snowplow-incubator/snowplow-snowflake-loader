@@ -1,6 +1,6 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
-import cats.effect.Sync
+import cats.effect.{Async, Resource, Sync}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.snowflake.Config
 import org.typelevel.log4cats.Logger
@@ -12,11 +12,20 @@ object SnowflakeRetrying {
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def retryIndefinitely[F[_]: Sync: Sleep, A](snowflakeHealth: SnowflakeHealth[F], config: Config.Retries)(action: F[A]): F[A] =
+  def retryIndefinitely[F[_]: Async, A](snowflakeHealth: SnowflakeHealth[F], config: Config.Retries)(action: F[A]): F[A] =
     retryUntilSuccessful(snowflakeHealth, config, action) <*
       snowflakeHealth.setHealthy()
 
-  private def retryUntilSuccessful[F[_]: Sync: Sleep, A](
+  def retryIndefinitelyResource[F[_]: Async, A](
+    snowflakeHealth: SnowflakeHealth[F],
+    config: Config.Retries
+  )(
+    resource: Resource[F, A]
+  ): Resource[F, A] =
+    retryUntilSuccessfulResource(snowflakeHealth, config, resource) <*
+      Resource.eval(snowflakeHealth.setHealthy())
+
+  private def retryUntilSuccessful[F[_]: Async, A](
     snowflakeHealth: SnowflakeHealth[F],
     config: Config.Retries,
     action: F[A]
@@ -26,6 +35,19 @@ object SnowflakeRetrying {
       .retryingOnAllErrors(
         policy  = RetryPolicies.exponentialBackoff[F](config.backoff),
         onError = (error, details) => Logger[F].error(error)(s"Executing Snowflake command failed. ${extractRetryDetails(details)}")
+      )
+
+  private def retryUntilSuccessfulResource[F[_]: Async, A](
+    snowflakeHealth: SnowflakeHealth[F],
+    config: Config.Retries,
+    resource: Resource[F, A]
+  ): Resource[F, A] =
+    resource
+      .onError(_ => Resource.eval(snowflakeHealth.setUnhealthy()))
+      .retryingOnAllErrors(
+        policy = RetryPolicies.exponentialBackoff[Resource[F, *]](config.backoff),
+        onError =
+          (error, details) => Resource.eval(Logger[F].error(error)(s"Executing Snowflake command failed. ${extractRetryDetails(details)}"))
       )
 
   private def extractRetryDetails(details: RetryDetails): String = details match {

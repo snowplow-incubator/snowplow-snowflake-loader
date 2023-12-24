@@ -7,10 +7,7 @@
  */
 package com.snowplowanalytics.snowplow.snowflake.processing
 
-import cats.effect.implicits._
-import cats.effect.kernel.{Ref, Resource}
-import cats.effect.std.{Hotswap, Semaphore}
-import cats.effect.{Async, Poll, Sync}
+import cats.effect.{Async, Resource, Sync}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, Monitoring}
 import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
@@ -23,23 +20,7 @@ import java.time.ZoneOffset
 import java.util.Properties
 import scala.jdk.CollectionConverters._
 
-trait ChannelProvider[F[_]] {
-
-  /**
-   * Closes the open channel and opens a new channel
-   *
-   * This should be called if the channel becomes invalid. And the channel becomes invalid if the
-   * table is altered by another concurrent loader.
-   */
-  def reset: F[Unit]
-
-  /**
-   * Wraps an action which requires the channel to be closed
-   *
-   * This should be called when altering the table to add new columns. The newly opened channel will
-   * be able to use the new columns.
-   */
-  def withClosedChannel[A](fa: F[A]): F[A]
+trait Channel[F[_]] {
 
   /**
    * Writes rows to Snowflake
@@ -49,10 +30,23 @@ trait ChannelProvider[F[_]] {
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def write(rows: Iterable[Map[String, AnyRef]]): F[ChannelProvider.WriteResult]
+  def write(rows: Iterable[Map[String, AnyRef]]): F[Channel.WriteResult]
+
+  /** Closes the Snowflake channel */
+  def close: F[Unit]
 }
 
-object ChannelProvider {
+object Channel {
+
+  /**
+   * Provider of open Snowflake channels
+   *
+   * The Provider is not responsible for closing any opened channel. Channel lifecycle must be
+   * managed by the surrounding application code.
+   */
+  trait Provider[F[_]] {
+    def open: F[Channel[F]]
+  }
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
@@ -92,88 +86,69 @@ object ChannelProvider {
      *   Contains details of any failures to write events to Snowflake. If the write was completely
      *   successful then this list is empty.
      */
-    case class WriteFailures(value: List[ChannelProvider.WriteFailure]) extends WriteResult
+    case class WriteFailures(value: List[Channel.WriteFailure]) extends WriteResult
 
   }
 
-  /** A large number so we don't limit the number of permits for calls to `flush` and `enqueue` */
-  private val allAvailablePermits: Long = Long.MaxValue
-
-  def make[F[_]: Async](
-    config: Config.Snowflake,
-    snowflakeHealth: SnowflakeHealth[F],
-    batchingConfig: Config.Batching,
-    retriesConfig: Config.Retries,
-    monitoring: Monitoring[F]
-  ): Resource[F, ChannelProvider[F]] =
+  def provider[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, Provider[F]] =
     for {
       client <- createClient(config, batchingConfig)
-      channelResource = createChannel(config, client, snowflakeHealth, retriesConfig, monitoring)
-      (hs, channel) <- Hotswap.apply(channelResource)
-      ref <- Resource.eval(Ref[F].of(channel))
-      sem <- Resource.eval(Semaphore[F](allAvailablePermits))
-    } yield impl(ref, hs, sem, channelResource)
-
-  private def impl[F[_]: Async](
-    ref: Ref[F, SnowflakeStreamingIngestChannel],
-    hs: Hotswap[F, SnowflakeStreamingIngestChannel],
-    sem: Semaphore[F],
-    next: Resource[F, SnowflakeStreamingIngestChannel]
-  ): ChannelProvider[F] =
-    new ChannelProvider[F] {
-      def reset: F[Unit] =
-        withAllPermits(sem) { // Must have **all** permits so we don't conflict with a write
-          ref.get.flatMap { channel =>
-            if (channel.isValid())
-              // We might have concurrent fibers calling `reset`.  This just means another fiber
-              // has already reset this channel.
-              Sync[F].unit
-            else
-              Sync[F].uncancelable { _ =>
-                for {
-                  _ <- hs.clear
-                  channel <- hs.swap(next)
-                  _ <- ref.set(channel)
-                } yield ()
-              }
-          }
-        }
-
-      def withClosedChannel[A](fa: F[A]): F[A] =
-        withAllPermits(sem) { // Must have **all** permites so we don't conflict with a write
-          Sync[F].uncancelable { _ =>
-            for {
-              _ <- hs.clear
-              a <- fa
-              channel <- hs.swap(next)
-              _ <- ref.set(channel)
-            } yield a
-          }
-        }
-
-      def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] =
-        sem.permit
-          .use[WriteResult] { _ =>
-            for {
-              channel <- ref.get
-              response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
-              _ <- flushChannel[F](channel)
-              isValid <- Sync[F].delay(channel.isValid)
-            } yield if (isValid) WriteResult.WriteFailures(parseResponse(response)) else WriteResult.ChannelIsInvalid
-          }
-          .recover {
-            case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
-              WriteResult.ChannelIsInvalid
-          }
+    } yield new Provider[F] {
+      def open: F[Channel[F]] = createChannel[F](config, client).map(impl[F])
     }
 
-  /** Wraps a `F[A]` so it only runs when no other fiber is using the channel at the same time */
-  private def withAllPermits[F[_]: Sync, A](sem: Semaphore[F])(f: F[A]): F[A] =
-    Sync[F].uncancelable { poll =>
-      for {
-        _ <- poll(sem.acquireN(allAvailablePermits))
-        a <- f.guarantee(sem.releaseN(allAvailablePermits))
-      } yield a
+  def providerToColdswap[F[_]: Async](
+    provider: Provider[F],
+    retries: Config.Retries,
+    health: SnowflakeHealth[F],
+    monitoring: Monitoring[F]
+  ): Resource[F, Coldswap[F, Channel[F]]] =
+    Coldswap.make(providerToResource(provider, retries, health, monitoring))
+
+  private def providerToResource[F[_]: Async](
+    provider: Provider[F],
+    retries: Config.Retries,
+    health: SnowflakeHealth[F],
+    monitoring: Monitoring[F]
+  ): Resource[F, Channel[F]] =
+    SnowflakeRetrying.retryIndefinitelyResource(health, retries) {
+      Resource
+        .make(provider.open)(_.close)
+        .onError { cause =>
+          Resource.eval(monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause)))
+        }
+    }
+
+  private def impl[F[_]: Async](channel: SnowflakeStreamingIngestChannel): Channel[F] =
+    new Channel[F] {
+
+      def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
+        val attempt: F[WriteResult] = for {
+          response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
+          _ <- flushChannel[F](channel)
+          isValid <- Sync[F].delay(channel.isValid)
+        } yield if (isValid) WriteResult.WriteFailures(parseResponse(response)) else WriteResult.ChannelIsInvalid
+
+        attempt.recover {
+          case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+            WriteResult.ChannelIsInvalid
+        }
+      }
+
+      def close: F[Unit] =
+        Logger[F].info(s"Closing channel ${channel.getFullyQualifiedName()}") *>
+          Async[F]
+            .fromCompletableFuture {
+              Async[F].delay {
+                channel.close()
+              }
+            }
+            .void
+            .recover {
+              case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+                // We have already handled errors associated with invalid channel
+                ()
+            }
     }
 
   private def parseResponse(response: InsertValidationResponse): List[WriteFailure] =
@@ -187,11 +162,8 @@ object ChannelProvider {
 
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
-    client: SnowflakeStreamingIngestClient,
-    snowflakeHealth: SnowflakeHealth[F],
-    retriesConfig: Config.Retries,
-    monitoring: Monitoring[F]
-  ): Resource[F, SnowflakeStreamingIngestChannel] = {
+    client: SnowflakeStreamingIngestClient
+  ): F[SnowflakeStreamingIngestChannel] = {
     val request = OpenChannelRequest
       .builder(config.channel)
       .setDBName(config.database)
@@ -201,32 +173,8 @@ object ChannelProvider {
       .setDefaultTimezone(ZoneOffset.UTC)
       .build
 
-    def make(poll: Poll[F]) = poll {
-      Logger[F].info(s"Opening channel ${config.channel}") *>
-        SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
-          Async[F]
-            .blocking(client.openChannel(request))
-            .onError { cause =>
-              monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause))
-            }
-        }
-    }
-
-    Resource.makeFull(make) { channel =>
-      Logger[F].info(s"Closing channel ${config.channel}") *>
-        Async[F]
-          .fromCompletableFuture {
-            Async[F].delay {
-              channel.close()
-            }
-          }
-          .void
-          .recover {
-            case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
-              // We have already handled errors associated with invalid channel
-              ()
-          }
-    }
+    Logger[F].info(s"Opening channel ${config.channel}") *>
+      Async[F].blocking(client.openChannel(request))
   }
 
   private def channelProperties(config: Config.Snowflake, batchingConfig: Config.Batching): Properties = {

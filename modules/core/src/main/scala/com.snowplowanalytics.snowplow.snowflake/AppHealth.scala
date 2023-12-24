@@ -12,7 +12,7 @@ object AppHealth {
   def isHealthy[F[_]: Monad](
     config: Config.HealthProbe,
     source: SourceAndAck[F],
-    snowflakeHealth: SnowflakeHealth[F]
+    snowflakeHealth: SnowflakeHealth.Stateful[F]
   ): F[HealthProbe.Status] =
     List(
       sourceIsHealthy(config, source),

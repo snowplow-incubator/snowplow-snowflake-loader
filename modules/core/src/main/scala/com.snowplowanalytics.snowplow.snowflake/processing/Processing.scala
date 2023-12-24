@@ -8,7 +8,7 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.implicits._
-import cats.{Applicative, Foldable, Monad}
+import cats.{Applicative, Foldable}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
 import com.snowplowanalytics.iglu.core.SchemaCriterion
@@ -36,7 +36,11 @@ object Processing {
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
-    env.source.stream(eventProcessingConfig, eventProcessor(env))
+    Stream.eval(env.tableManager.initializeEventsTable()) *>
+      Stream.resource(Channel.providerToColdswap(env.channelProvider, env.retries, env.snowflakeHealth, env.monitoring)).flatMap {
+        coldswap =>
+          env.source.stream(eventProcessingConfig, eventProcessor(env, coldswap))
+      }
   }
 
   /** Model used between stages of the processing pipeline */
@@ -103,7 +107,7 @@ object Processing {
   private object ParsedWriteResult {
     def empty: ParsedWriteResult = ParsedWriteResult(Set.empty, Nil, Nil)
 
-    def buildFrom(events: ListOfList[EventWithTransform], writeFailures: List[ChannelProvider.WriteFailure]): ParsedWriteResult =
+    def buildFrom(events: ListOfList[EventWithTransform], writeFailures: List[Channel.WriteFailure]): ParsedWriteResult =
       if (writeFailures.isEmpty)
         empty
       else {
@@ -119,7 +123,8 @@ object Processing {
   }
 
   private def eventProcessor[F[_]: Async](
-    env: Environment[F]
+    env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]]
   ): EventProcessor[F] = { in =>
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
@@ -127,7 +132,7 @@ object Processing {
       .through(parseBytes(badProcessor))
       .through(transform(badProcessor, env.schemasToSkip))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
-      .through(writeToSnowflake(env, badProcessor))
+      .through(writeToSnowflake(env, coldswap, badProcessor))
       .through(sendFailedEvents(env))
       .through(sendMetrics(env))
       .through(emitTokens)
@@ -203,32 +208,37 @@ object Processing {
 
   private def writeToSnowflake[F[_]: Async](
     env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]],
     badProcessor: BadRowProcessor
   ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.parEvalMap(env.batching.uploadConcurrency) { batch =>
       for {
-        batch <- writeAttempt1(env, badProcessor, batch)
-        batch <- writeAttempt2(env, badProcessor, batch)
+        batch <- writeAttempt1(env, coldswap, badProcessor, batch)
+        batch <- writeAttempt2(coldswap, badProcessor, batch)
       } yield batch
     }
 
   private def withWriteAttempt[F[_]: Sync](
-    env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]],
     batch: BatchAfterTransform
   )(
-    handleFailures: List[ChannelProvider.WriteFailure] => F[BatchAfterTransform]
+    handleFailures: List[Channel.WriteFailure] => F[BatchAfterTransform]
   ): F[BatchAfterTransform] =
     if (batch.toBeInserted.isEmpty)
       batch.pure[F]
     else
       Sync[F].untilDefinedM {
-        env.channelProvider.write(batch.toBeInserted.asIterable.map(_._2)).flatMap {
-          case ChannelProvider.WriteResult.ChannelIsInvalid =>
-            // Reset the channel and immediately try again
-            env.channelProvider.reset.as(none)
-          case ChannelProvider.WriteResult.WriteFailures(notWritten) =>
-            handleFailures(notWritten).map(Some(_))
-        }
+        coldswap.opened
+          .use { channel =>
+            channel.write(batch.toBeInserted.asIterable.map(_._2))
+          }
+          .flatMap {
+            case Channel.WriteResult.ChannelIsInvalid =>
+              // Reset the channel and immediately try again
+              coldswap.closed.use_.as(none)
+            case Channel.WriteResult.WriteFailures(notWritten) =>
+              handleFailures(notWritten).map(Some(_))
+          }
       }
 
   /**
@@ -239,14 +249,15 @@ object Processing {
    */
   private def writeAttempt1[F[_]: Sync](
     env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]],
     badProcessor: BadRowProcessor,
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
-    withWriteAttempt(env, batch) { notWritten =>
+    withWriteAttempt(coldswap, batch) { notWritten =>
       val parsedResult = ParsedWriteResult.buildFrom(batch.toBeInserted, notWritten)
       for {
         _ <- abortIfFatalException[F](parsedResult.unexpectedFailures)
-        _ <- handleSchemaEvolution(env, parsedResult.extraColsRequired)
+        _ <- handleSchemaEvolution(env, coldswap, parsedResult.extraColsRequired)
       } yield {
         val moreBad = parsedResult.unexpectedFailures.map { case (event, sfe) =>
           badRowFromEnqueueFailure(badProcessor, event, sfe)
@@ -265,11 +276,11 @@ object Processing {
    * at this stage are unexpected.
    */
   private def writeAttempt2[F[_]: Sync](
-    env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]],
     badProcessor: BadRowProcessor,
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
-    withWriteAttempt(env, batch) { notWritten =>
+    withWriteAttempt(coldswap, batch) { notWritten =>
       val mapped = notWritten match {
         case Nil => Nil
         case more =>
@@ -330,14 +341,15 @@ object Processing {
    * Alters the table to add any columns that were present in the Events but not currently in the
    * table
    */
-  private def handleSchemaEvolution[F[_]: Monad](
+  private def handleSchemaEvolution[F[_]: Sync](
     env: Environment[F],
+    coldswap: Coldswap[F, Channel[F]],
     extraColsRequired: Set[String]
   ): F[Unit] =
     if (extraColsRequired.isEmpty)
       ().pure[F]
     else
-      env.channelProvider.withClosedChannel {
+      coldswap.closed.use { _ =>
         env.tableManager.addColumns(extraColsRequired.toList)
       }
 

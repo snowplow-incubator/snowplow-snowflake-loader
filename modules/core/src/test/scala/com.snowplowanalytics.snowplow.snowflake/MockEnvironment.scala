@@ -14,7 +14,7 @@ import fs2.Stream
 
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{ChannelProvider, TableManager}
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.runtime.AppInfo
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
@@ -44,23 +44,23 @@ object MockEnvironment {
    * @param inputs
    *   Input events to send into the environment.
    * @param channelResponses
-   *   Responses we want the `ChannelProvider` to return when someone calls `write`
+   *   Responses we want the `Channel` to return when someone calls `write`
    * @return
    *   An environment and a Ref that records the actions make by the environment
    */
-  def build(inputs: List[TokenedEvents], channelResponses: List[ChannelProvider.WriteResult] = Nil): IO[MockEnvironment] =
+  def build(inputs: List[TokenedEvents], channelResponses: List[Channel.WriteResult] = Nil): IO[MockEnvironment] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
-      channelProvider <- testChannelProvider(state, channelResponses)
+      channel <- testChannel(state, channelResponses)
     } yield {
       val env = Environment(
-        appInfo         = appInfo,
-        source          = testSourceAndAck(inputs, state),
-        badSink         = testSink(state),
-        httpClient      = testHttpClient,
-        tableManager    = testTableManager(state),
-        channelProvider = channelProvider,
-        metrics         = testMetrics(state),
+        appInfo      = appInfo,
+        source       = testSourceAndAck(inputs, state),
+        badSink      = testSink(state),
+        httpClient   = testHttpClient,
+        tableManager = testTableManager(state),
+        channel      = channel,
+        metrics      = testMetrics(state),
         batching = Config.Batching(
           maxBytes          = 16000000,
           maxDelay          = 10.seconds,
@@ -112,44 +112,40 @@ object MockEnvironment {
   }
 
   /**
-   * Mocked implementation of a `ChannelProvider`
+   * Mocked implementation of a `Channel`
    *
    * @param actionRef
    *   Global Ref used to accumulate actions that happened
    * @param responses
-   *   Responses that this mocked ChannelProvider should return each time someone calls `write`. If
-   *   no responses given, then it will return with a successful response.
+   *   Responses that this mocked Channel should return each time someone calls `write`. If no
+   *   responses given, then it will return with a successful response.
    */
-  private def testChannelProvider(
+  private def testChannel(
     actionRef: Ref[IO, Vector[Action]],
-    responses: List[ChannelProvider.WriteResult]
-  ): IO[ChannelProvider[IO]] =
+    responses: List[Channel.WriteResult]
+  ): IO[Resource[IO, Channel[IO]]] =
     for {
       responseRef <- Ref[IO].of(responses)
-    } yield new ChannelProvider[IO] {
-      def reset: IO[Unit] =
-        actionRef.update(_ :+ ClosedChannel :+ OpenedChannel)
+    } yield {
+      val make = actionRef.update(_ :+ OpenedChannel).as {
+        new Channel[IO] {
+          def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] =
+            for {
+              response <- responseRef.modify {
+                            case head :: tail => (tail, head)
+                            case Nil          => (Nil, Channel.WriteResult.WriteFailures(Nil))
+                          }
+              _ <- response match {
+                     case Channel.WriteResult.WriteFailures(failures) =>
+                       actionRef.update(_ :+ WroteRowsToSnowflake(rows.size - failures.size))
+                     case Channel.WriteResult.ChannelIsInvalid =>
+                       IO.unit
+                   }
+            } yield response
+        }
+      }
 
-      def withClosedChannel[A](fa: IO[A]): IO[A] =
-        for {
-          _ <- actionRef.update(_ :+ ClosedChannel)
-          a <- fa
-          _ <- actionRef.update(_ :+ OpenedChannel)
-        } yield a
-
-      def write(rows: Iterable[Map[String, AnyRef]]): IO[ChannelProvider.WriteResult] =
-        for {
-          response <- responseRef.modify {
-                        case head :: tail => (tail, head)
-                        case Nil          => (Nil, ChannelProvider.WriteResult.WriteFailures(Nil))
-                      }
-          _ <- response match {
-                 case ChannelProvider.WriteResult.WriteFailures(failures) =>
-                   actionRef.update(_ :+ WroteRowsToSnowflake(rows.size - failures.size))
-                 case ChannelProvider.WriteResult.ChannelIsInvalid =>
-                   IO.unit
-               }
-        } yield response
+      Resource.make(make)(_ => actionRef.update(_ :+ ClosedChannel))
     }
 
   def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {
