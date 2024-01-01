@@ -29,7 +29,8 @@ case class Environment[F[_]](
   channel: Coldswap[F, Channel[F]],
   metrics: Metrics[F],
   batching: Config.Batching,
-  schemasToSkip: List[SchemaCriterion]
+  schemasToSkip: List[SchemaCriterion],
+  badRowMaxSize: Int
 )
 
 object Environment {
@@ -50,7 +51,7 @@ object Environment {
            )
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       monitoring <- Monitoring.create[F](config.monitoring.webhook, appInfo, httpClient)
-      badSink <- toSink(config.output.bad)
+      badSink <- toSink(config.output.bad.sink)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       tableManager <- Resource.eval(TableManager.make(config.output.good, snowflakeHealth, config.retries, monitoring))
       channelResource <- Channel.make(config.output.good, snowflakeHealth, config.batching, config.retries, monitoring)
@@ -64,6 +65,7 @@ object Environment {
       channel       = channelColdswap,
       metrics       = metrics,
       batching      = config.batching,
-      schemasToSkip = config.skipSchemas
+      schemasToSkip = config.skipSchemas,
+      badRowMaxSize = config.output.bad.maxRecordSize
     )
 }
