@@ -36,7 +36,11 @@ case class Config[+Source, +Sink](
 
 object Config {
 
-  case class Output[+Sink](good: Snowflake, bad: Sink)
+  case class Output[+Sink](
+    good: Snowflake,
+    bad: Sink,
+    badRowMaxSize: Int
+  )
 
   case class Snowflake(
     url: SnowflakeURL,

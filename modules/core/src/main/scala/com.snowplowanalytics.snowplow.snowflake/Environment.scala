@@ -26,7 +26,8 @@ case class Environment[F[_]](
   channelProvider: ChannelProvider[F],
   metrics: Metrics[F],
   batching: Config.Batching,
-  schemasToSkip: List[SchemaCriterion]
+  schemasToSkip: List[SchemaCriterion],
+  badRowMaxSize: Int
 )
 
 object Environment {
@@ -61,6 +62,7 @@ object Environment {
       channelProvider = channelProvider,
       metrics         = metrics,
       batching        = config.batching,
-      schemasToSkip   = config.skipSchemas
+      schemasToSkip   = config.skipSchemas,
+      badRowMaxSize   = config.output.badRowMaxSize
     )
 }

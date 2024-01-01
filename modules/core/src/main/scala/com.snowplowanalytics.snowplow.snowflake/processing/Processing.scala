@@ -28,7 +28,7 @@ import com.snowplowanalytics.snowplow.sinks.ListOfList
 import com.snowplowanalytics.snowplow.snowflake.{Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
-import com.snowplowanalytics.snowplow.loaders.transform.Transform
+import com.snowplowanalytics.snowplow.loaders.transform.{BadRowsSerializer, Transform}
 
 object Processing {
 
@@ -128,7 +128,7 @@ object Processing {
       .through(transform(badProcessor, env.schemasToSkip))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
-      .through(sendFailedEvents(env))
+      .through(sendFailedEvents(env, badProcessor))
       .through(sendMetrics(env))
       .through(emitTokens)
   }
@@ -341,15 +341,19 @@ object Processing {
         env.tableManager.addColumns(extraColsRequired.toList)
       }
 
-  private def sendFailedEvents[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+  private def sendFailedEvents[F[_]: Applicative](
+    env: Environment[F],
+    badRowProcessor: BadRowProcessor
+  ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.evalTap { batch =>
       if (batch.badAccumulated.nonEmpty) {
-        val serialized = batch.badAccumulated.mapUnordered(_.compactByteArray)
+        val serialized =
+          batch.badAccumulated.mapUnordered(badRow => BadRowsSerializer.withMaxSize(badRow, badRowProcessor, env.badRowMaxSize))
         env.badSink.sinkSimple(serialized)
       } else Applicative[F].unit
     }
 
-  private def sendMetrics[F[_]: Applicative, A](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+  private def sendMetrics[F[_]: Applicative](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.evalTap { batch =>
       val countBad = batch.badAccumulated.asIterable.size
       env.metrics.addGood(batch.origBatchCount - countBad) *> env.metrics.addBad(countBad)
