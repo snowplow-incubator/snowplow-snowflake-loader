@@ -38,9 +38,12 @@ object Config {
 
   case class Output[+Sink](
     good: Snowflake,
-    bad: Sink,
-    badRowMaxSize: Int
+    bad: SinkWithMaxSize[Sink]
   )
+
+  case class MaxRecordSize(maxRecordSize: Int)
+
+  case class SinkWithMaxSize[+Sink](sink: Sink, maxRecordSize: Int)
 
   case class Snowflake(
     url: SnowflakeURL,
@@ -93,8 +96,12 @@ object Config {
       Try(new SnowflakeURL(str))
     }
     implicit val snowflake = deriveConfiguredDecoder[Snowflake]
-    implicit val output    = deriveConfiguredDecoder[Output[Sink]]
-    implicit val batching  = deriveConfiguredDecoder[Batching]
+    implicit val sinkWithMaxSize = for {
+      sink <- Decoder[Sink]
+      maxSize <- deriveConfiguredDecoder[MaxRecordSize]
+    } yield SinkWithMaxSize(sink, maxSize.maxRecordSize)
+    implicit val output   = deriveConfiguredDecoder[Output[Sink]]
+    implicit val batching = deriveConfiguredDecoder[Batching]
     implicit val sentryDecoder = deriveConfiguredDecoder[SentryM[Option]]
       .map[Option[Sentry]] {
         case SentryM(Some(dsn), tags) =>

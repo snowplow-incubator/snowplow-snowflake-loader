@@ -48,7 +48,7 @@ object Environment {
            )
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       monitoring <- Monitoring.create[F](config.monitoring.webhook, appInfo, httpClient)
-      badSink <- toSink(config.output.bad)
+      badSink <- toSink(config.output.bad.sink)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       tableManager <- Resource.eval(TableManager.make(config.output.good, snowflakeHealth, config.retries, monitoring))
       _ <- Resource.eval(tableManager.initializeEventsTable())
@@ -63,6 +63,6 @@ object Environment {
       metrics         = metrics,
       batching        = config.batching,
       schemasToSkip   = config.skipSchemas,
-      badRowMaxSize   = config.output.badRowMaxSize
+      badRowMaxSize   = config.output.bad.maxRecordSize
     )
 }
