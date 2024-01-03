@@ -49,6 +49,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(4),
         Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
@@ -87,6 +88,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(6),
         Action.SentToBad(6),
         Action.AddedGoodCountMetric(6),
@@ -115,10 +117,12 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(1),
         Action.ClosedChannel,
         Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(1),
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
@@ -147,6 +151,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(1),
         Action.SentToBad(1),
         Action.AddedGoodCountMetric(1),
@@ -176,6 +181,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(1),
         Action.ClosedChannel
       )
@@ -197,8 +203,10 @@ class ProcessingSpec extends Specification with CatsEffect {
       Vector(
         Action.InitEventsTable,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.ClosedChannel,
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(2),
         Action.AddedGoodCountMetric(2),
         Action.AddedBadCountMetric(0),
@@ -228,6 +236,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Action.SetLatencyMetric(42123),
         Action.SetLatencyMetric(42123),
         Action.OpenedChannel,
+        Action.BecomeHealthy,
         Action.WroteRowsToSnowflake(4),
         Action.AddedGoodCountMetric(4),
         Action.AddedBadCountMetric(0),
