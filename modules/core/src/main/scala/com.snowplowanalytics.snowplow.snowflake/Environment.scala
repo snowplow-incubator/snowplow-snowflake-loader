@@ -12,7 +12,7 @@ import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, Coldswap, SnowflakeHealth, TableManager}
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, SnowflakeHealth, TableManager}
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import org.http4s.blaze.client.BlazeClientBuilder
 import org.http4s.client.Client
@@ -23,7 +23,7 @@ case class Environment[F[_]](
   badSink: Sink[F],
   httpClient: Client[F],
   tableManager: TableManager[F],
-  channel: Coldswap[F, Channel[F]],
+  channel: Channel.Provider[F],
   metrics: Metrics[F],
   batching: Config.Batching,
   schemasToSkip: List[SchemaCriterion],
@@ -51,15 +51,15 @@ object Environment {
       badSink <- toSink(config.output.bad.sink)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       tableManager <- Resource.eval(TableManager.make(config.output.good, snowflakeHealth, config.retries, monitoring))
-      channelResource <- Channel.make(config.output.good, snowflakeHealth, config.batching, config.retries, monitoring)
-      channelColdswap <- Coldswap.make(channelResource)
+      channelOpener <- Channel.opener(config.output.good, config.batching)
+      channelProvider <- Channel.provider(channelOpener, config.retries, snowflakeHealth, monitoring)
     } yield Environment(
       appInfo       = appInfo,
       source        = sourceAndAck,
       badSink       = badSink,
       httpClient    = httpClient,
       tableManager  = tableManager,
-      channel       = channelColdswap,
+      channel       = channelProvider,
       metrics       = metrics,
       batching      = config.batching,
       schemasToSkip = config.skipSchemas,
