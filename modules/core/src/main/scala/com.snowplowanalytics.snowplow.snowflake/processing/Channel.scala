@@ -35,6 +35,24 @@ trait Channel[F[_]] {
 
 object Channel {
 
+  trait CloseableChannel[F[_]] extends Channel[F] {
+
+    /** Closes the Snowflake channel */
+    def close: F[Unit]
+  }
+
+  /**
+   * Provider of open Snowflake channels
+   *
+   * The Provider is not responsible for closing any opened channel. Channel lifecycle must be
+   * managed by the surrounding application code.
+   */
+  trait Opener[F[_]] {
+    def open: F[CloseableChannel[F]]
+  }
+
+  type Provider[F[_]] = Coldswap[F, Channel[F]]
+
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   /**
@@ -77,19 +95,42 @@ object Channel {
 
   }
 
-  def make[F[_]: Async](
-    config: Config.Snowflake,
-    snowflakeHealth: SnowflakeHealth[F],
-    batchingConfig: Config.Batching,
-    retriesConfig: Config.Retries,
-    monitoring: Monitoring[F]
-  ): Resource[F, Resource[F, Channel[F]]] =
+  def opener[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, Opener[F]] =
     for {
       client <- createClient(config, batchingConfig)
-    } yield createChannel[F](config, client, snowflakeHealth, retriesConfig, monitoring).map(impl[F])
+    } yield new Opener[F] {
+      def open: F[CloseableChannel[F]] = createChannel[F](config, client).map(impl[F])
+    }
 
-  private def impl[F[_]: Async](channel: SnowflakeStreamingIngestChannel): Channel[F] =
-    new Channel[F] {
+  def provider[F[_]: Async](
+    opener: Opener[F],
+    retries: Config.Retries,
+    health: SnowflakeHealth[F],
+    monitoring: Monitoring[F]
+  ): Resource[F, Provider[F]] =
+    Coldswap.make(openerToResource(opener, retries, health, monitoring))
+
+  private def openerToResource[F[_]: Async](
+    opener: Opener[F],
+    retries: Config.Retries,
+    health: SnowflakeHealth[F],
+    monitoring: Monitoring[F]
+  ): Resource[F, Channel[F]] = {
+
+    def make(poll: Poll[F]) = poll {
+      SnowflakeRetrying.retryIndefinitely(health, retries) {
+        opener.open
+          .onError { cause =>
+            monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause))
+          }
+      }
+    }
+
+    Resource.makeFull(make)(_.close)
+  }
+
+  private def impl[F[_]: Async](channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
+    new CloseableChannel[F] {
 
       def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
         val attempt: F[WriteResult] = for {
@@ -103,6 +144,21 @@ object Channel {
             WriteResult.ChannelIsInvalid
         }
       }
+
+      def close: F[Unit] =
+        Logger[F].info(s"Closing channel ${channel.getFullyQualifiedName()}") *>
+          Async[F]
+            .fromCompletableFuture {
+              Async[F].delay {
+                channel.close()
+              }
+            }
+            .void
+            .recover {
+              case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+                // We have already handled errors associated with invalid channel
+                ()
+            }
     }
 
   private def parseResponse(response: InsertValidationResponse): List[WriteFailure] =
@@ -116,11 +172,8 @@ object Channel {
 
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
-    client: SnowflakeStreamingIngestClient,
-    snowflakeHealth: SnowflakeHealth[F],
-    retriesConfig: Config.Retries,
-    monitoring: Monitoring[F]
-  ): Resource[F, SnowflakeStreamingIngestChannel] = {
+    client: SnowflakeStreamingIngestClient
+  ): F[SnowflakeStreamingIngestChannel] = {
     val request = OpenChannelRequest
       .builder(config.channel)
       .setDBName(config.database)
@@ -130,32 +183,8 @@ object Channel {
       .setDefaultTimezone(ZoneOffset.UTC)
       .build
 
-    def make(poll: Poll[F]) = poll {
-      Logger[F].info(s"Opening channel ${config.channel}") *>
-        SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
-          Async[F]
-            .blocking(client.openChannel(request))
-            .onError { cause =>
-              monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause))
-            }
-        }
-    }
-
-    Resource.makeFull(make) { channel =>
-      Logger[F].info(s"Closing channel ${config.channel}") *>
-        Async[F]
-          .fromCompletableFuture {
-            Async[F].delay {
-              channel.close()
-            }
-          }
-          .void
-          .recover {
-            case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
-              // We have already handled errors associated with invalid channel
-              ()
-          }
-    }
+    Logger[F].info(s"Opening channel ${config.channel}") *>
+      Async[F].blocking(client.openChannel(request))
   }
 
   private def channelProperties(config: Config.Snowflake, batchingConfig: Config.Batching): Properties = {
