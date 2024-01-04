@@ -8,21 +8,21 @@
 package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.IO
-import fs2.{Chunk, Stream}
-import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
+import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.runtime.HealthProbe
+import com.snowplowanalytics.snowplow.snowflake.MockEnvironment
+import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.{Action, Mocks, Response}
+import com.snowplowanalytics.snowplow.sources.TokenedEvents
+import fs2.{Chunk, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
+import org.specs2.Specification
 
-import java.nio.charset.StandardCharsets
 import java.nio.ByteBuffer
+import java.nio.charset.StandardCharsets
 import java.time.Instant
 import scala.concurrent.duration.DurationLong
-
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.snowflake.MockEnvironment
-import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.Action
-import com.snowplowanalytics.snowplow.sources.TokenedEvents
 
 class ProcessingSpec extends Specification with CatsEffect {
   import ProcessingSpec._
@@ -37,10 +37,13 @@ class ProcessingSpec extends Specification with CatsEffect {
     Abort processing and don't ack events when the Channel reports a runtime error $e6
     Reset the Channel when the Channel reports the channel has become invalid $e7
     Set the latency metric based off the message timestamp $e8
+    Mark app as unhealthy when sinking badrows fails $e9
+    Mark app as unhealthy when writing to the Channel fails with runtime exception $e10
+    Mark app as unhealthy when writing to the Channel fails SDK internal error exception $e11
   """
 
   def e1 =
-    setup(generateEvents.take(2).compile.toList) { case (inputs, control) =>
+    runTest(inputEvents(count = 2, good)) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -57,7 +60,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     }
 
   def e2 =
-    setup(generateBadlyFormatted.take(3).compile.toList) { case (inputs, control) =>
+    runTest(inputEvents(count = 3, badlyFormatted)) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -74,12 +77,12 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   def e3 = {
     val toInputs = for {
-      bads <- generateBadlyFormatted.take(3).compile.toList
-      goods <- generateEvents.take(3).compile.toList
+      bads <- inputEvents(count = 3, badlyFormatted)
+      goods <- inputEvents(count = 3, good)
     } yield bads.zip(goods).map { case (bad, good) =>
       TokenedEvents(bad.events ++ good.events, good.ack, None)
     }
-    setup(toInputs) { case (inputs, control) =>
+    runTest(toInputs) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -98,16 +101,20 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e4 = {
-    val mockedChannelResponses = List(
-      Channel.WriteResult.WriteFailures(
-        List(
-          Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
-        )
-      ),
-      Channel.WriteResult.WriteFailures(Nil)
+    val mocks = Mocks.default.copy(
+      channelResponses = List(
+        Response.Success(
+          Channel.WriteResult.WriteFailures(
+            List(
+              Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+            )
+          )
+        ),
+        Response.Success(Channel.WriteResult.WriteFailures(Nil))
+      )
     )
 
-    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -129,16 +136,20 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e5 = {
-    val mockedChannelResponses = List(
-      Channel.WriteResult.WriteFailures(
-        List(
-          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
-        )
-      ),
-      Channel.WriteResult.WriteFailures(Nil)
+    val mocks = Mocks.default.copy(
+      channelResponses = List(
+        Response.Success(
+          Channel.WriteResult.WriteFailures(
+            List(
+              Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+            )
+          )
+        ),
+        Response.Success(Channel.WriteResult.WriteFailures(Nil))
+      )
     )
 
-    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -157,16 +168,20 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e6 = {
-    val mockedChannelResponses = List(
-      Channel.WriteResult.WriteFailures(
-        List(
-          Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
-        )
-      ),
-      Channel.WriteResult.WriteFailures(Nil)
+    val mocks = Mocks.default.copy(
+      channelResponses = List(
+        Response.Success(
+          Channel.WriteResult.WriteFailures(
+            List(
+              Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+            )
+          )
+        ),
+        Response.Success(Channel.WriteResult.WriteFailures(Nil))
+      )
     )
 
-    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (_, control) =>
+    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.handleError(_ => ())
         state <- control.state.get
@@ -181,12 +196,14 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e7 = {
-    val mockedChannelResponses = List(
-      Channel.WriteResult.ChannelIsInvalid,
-      Channel.WriteResult.WriteFailures(Nil)
+    val mocks = Mocks.default.copy(
+      channelResponses = List(
+        Response.Success(Channel.WriteResult.ChannelIsInvalid),
+        Response.Success(Channel.WriteResult.WriteFailures(Nil))
+      )
     )
 
-    setup(generateEvents.take(1).compile.toList, mockedChannelResponses) { case (inputs, control) =>
+    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
@@ -209,13 +226,13 @@ class ProcessingSpec extends Specification with CatsEffect {
     val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
     val processTime = Instant.parse("2023-10-24T10:00:42.123Z")
 
-    val toInputs = generateEvents.take(2).compile.toList.map {
+    val toInputs = inputEvents(count = 2, good).map {
       _.map {
         _.copy(earliestSourceTstamp = Some(messageTime))
       }
     }
 
-    val io = setup(toInputs) { case (inputs, control) =>
+    val io = runTest(toInputs) { case (inputs, control) =>
       for {
         _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
@@ -238,45 +255,96 @@ class ProcessingSpec extends Specification with CatsEffect {
 
   }
 
+  def e9 = {
+    val mocks = Mocks.default.copy(
+      badSinkResponse = Response.ExceptionThrown(new RuntimeException("Some error when sinking bad data"))
+    )
+
+    runTest(inputEvents(count = 1, badlyFormatted), mocks) { case (_, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain.voidError
+        healthStatus <- control.environment.appHealth.status()
+      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Bad sink is not healthy"))
+    }
+  }
+
+  def e10 = {
+    val mocks = Mocks.default.copy(
+      channelResponses = List(Response.ExceptionThrown(new RuntimeException("Some error when writing to the Channel")))
+    )
+
+    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain.voidError
+        healthStatus <- control.environment.appHealth.status()
+      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Snowflake is not healthy"))
+    }
+  }
+
+  def e11 = {
+    val mocks = Mocks.default.copy(
+      channelResponses = List(
+        Response.Success(
+          Channel.WriteResult.WriteFailures(
+            List(
+              Channel.WriteFailure(0L, List.empty, new SFException(ErrorCode.INTERNAL_ERROR))
+            )
+          )
+        )
+      )
+    )
+
+    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
+      for {
+        _ <- Processing.stream(control.environment).compile.drain.voidError
+        healthStatus <- control.environment.appHealth.status()
+      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Snowflake is not healthy"))
+    }
+  }
+
 }
 
 object ProcessingSpec {
 
-  def setup[A](
+  def runTest[A](
     toInputs: IO[List[TokenedEvents]],
-    channelResponses: List[Channel.WriteResult] = Nil
+    mocks: Mocks = Mocks.default
   )(
     f: (List[TokenedEvents], MockEnvironment) => IO[A]
   ): IO[A] =
     toInputs.flatMap { inputs =>
-      MockEnvironment.build(inputs, channelResponses).use { control =>
+      MockEnvironment.build(inputs, mocks).use { control =>
         f(inputs, control)
       }
     }
 
-  def generateEvents: Stream[IO, TokenedEvents] =
-    Stream.eval {
-      for {
-        ack <- IO.unique
-        eventId1 <- IO.randomUUID
-        eventId2 <- IO.randomUUID
-        collectorTstamp <- IO.realTimeInstant
-      } yield {
-        val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
-        val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
-        val serialized = Chunk(event1, event2).map { e =>
-          ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
-        }
-        TokenedEvents(serialized, ack, None)
-      }
-    }.repeat
+  def inputEvents(count: Long, source: IO[TokenedEvents]): IO[List[TokenedEvents]] =
+    Stream
+      .eval(source)
+      .repeat
+      .take(count)
+      .compile
+      .toList
 
-  def generateBadlyFormatted: Stream[IO, TokenedEvents] =
-    Stream.eval {
-      IO.unique.map { token =>
-        val serialized = Chunk("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
-        TokenedEvents(serialized, token, None)
+  def good: IO[TokenedEvents] =
+    for {
+      ack <- IO.unique
+      eventId1 <- IO.randomUUID
+      eventId2 <- IO.randomUUID
+      collectorTstamp <- IO.realTimeInstant
+    } yield {
+      val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
+      val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
+      val serialized = Chunk(event1, event2).map { e =>
+        ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
       }
-    }.repeat
+      TokenedEvents(serialized, ack, None)
+    }
+
+  def badlyFormatted: IO[TokenedEvents] =
+    IO.unique.map { token =>
+      val serialized = Chunk("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
+      TokenedEvents(serialized, token, None)
+    }
 
 }

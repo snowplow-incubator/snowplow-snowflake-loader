@@ -9,7 +9,7 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Sync}
 import cats.implicits._
-import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, JdbcTransactor, Monitoring}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, JdbcTransactor, Monitoring}
 import doobie.implicits._
 import doobie.{ConnectionIO, Fragment}
 import net.snowflake.client.jdbc.SnowflakeSQLException
@@ -32,7 +32,7 @@ object TableManager {
 
   def make[F[_]: Async](
     config: Config.Snowflake,
-    snowflakeHealth: SnowflakeHealth[F],
+    appHealth: AppHealth[F],
     retriesConfig: Config.Retries,
     monitoring: Monitoring[F]
   ): F[TableManager[F]] =
@@ -40,7 +40,7 @@ object TableManager {
       new TableManager[F] {
 
         override def initializeEventsTable(): F[Unit] =
-          SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
+          SnowflakeRetrying.retryIndefinitely(appHealth, retriesConfig) {
             Logger[F].info(s"Opening JDBC connection to ${config.url.getJdbcUrl}") *>
               executeInitTableQuery()
                 .onError { cause =>
@@ -49,7 +49,7 @@ object TableManager {
           }
 
         override def addColumns(columns: List[String]): F[Unit] =
-          SnowflakeRetrying.retryIndefinitely(snowflakeHealth, retriesConfig) {
+          SnowflakeRetrying.retryIndefinitely(appHealth, retriesConfig) {
             Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]") *>
               executeAddColumnsQuery(columns)
                 .onError { cause =>

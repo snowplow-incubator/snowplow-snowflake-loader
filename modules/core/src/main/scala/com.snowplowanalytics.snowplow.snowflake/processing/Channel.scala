@@ -9,7 +9,7 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Poll, Resource, Sync}
 import cats.implicits._
-import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, Monitoring}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
 import net.snowflake.ingest.streaming._
 import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
@@ -105,7 +105,7 @@ object Channel {
   def provider[F[_]: Async](
     opener: Opener[F],
     retries: Config.Retries,
-    health: SnowflakeHealth[F],
+    health: AppHealth[F],
     monitoring: Monitoring[F]
   ): Resource[F, Provider[F]] =
     Coldswap.make(openerToResource(opener, retries, health, monitoring))
@@ -113,7 +113,7 @@ object Channel {
   private def openerToResource[F[_]: Async](
     opener: Opener[F],
     retries: Config.Retries,
-    health: SnowflakeHealth[F],
+    health: AppHealth[F],
     monitoring: Monitoring[F]
   ): Resource[F, Channel[F]] = {
 

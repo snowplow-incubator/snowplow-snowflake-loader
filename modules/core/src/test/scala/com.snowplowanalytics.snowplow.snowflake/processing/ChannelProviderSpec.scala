@@ -14,10 +14,11 @@ import org.specs2.Specification
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
 
-import scala.concurrent.duration.DurationLong
-
-import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, Monitoring}
+import scala.concurrent.duration.{DurationLong, FiniteDuration}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe
+import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service.{BadSink, Snowflake}
+import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck}
 
 class ChannelProviderSpec extends Specification with CatsEffect {
   import ChannelProviderSpec._
@@ -33,12 +34,12 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   """
 
   def e1 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use_
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, c.monitoring).use_
 
     for {
       _ <- io
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
     } yield List(
       state should beEqualTo(Vector()),
       health should beHealthy
@@ -46,7 +47,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   }
 
   def e2 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use { provider =>
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
       provider.opened.use_
     }
 
@@ -58,7 +59,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     for {
       _ <- io
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
     } yield List(
       state should beEqualTo(expectedState),
       health should beHealthy
@@ -66,7 +67,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   }
 
   def e3 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use { provider =>
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
       provider.opened.use { _ =>
         goBOOM
       }
@@ -80,7 +81,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     for {
       _ <- io.voidError
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
     } yield List(
       state should beEqualTo(expectedState),
       health should beHealthy
@@ -93,7 +94,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
       def open: IO[Channel.CloseableChannel[IO]] = goBOOM
     }
 
-    val io = Channel.provider(throwingOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use { provider =>
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
       provider.opened.use_
     }
 
@@ -109,7 +110,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
       _ <- IO.sleep(4.minutes)
       _ <- fiber.cancel
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
     } yield List(
       state should beEqualTo(expectedState),
       health should beUnhealthy
@@ -125,7 +126,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     // Three concurrent fibers wanting to open the channel:
-    val io = Channel.provider(throwingOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use { provider =>
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
       Supervisor[IO](await = false).use { supervisor =>
         supervisor.supervise(provider.opened.surround(IO.never)) *>
           supervisor.supervise(provider.opened.surround(IO.never)) *>
@@ -145,7 +146,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
       fiber <- io.start
       _ <- IO.sleep(4.minutes)
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
       _ <- fiber.cancel
     } yield List(
       state should beEqualTo(expectedState),
@@ -169,7 +170,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     val io = throwingOnceOpener.flatMap { channelOpener =>
-      Channel.provider(channelOpener, retriesConfig, c.snowflakeHealth, c.monitoring).use { provider =>
+      Channel.provider(channelOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
         provider.opened.use_
       }
     }
@@ -183,7 +184,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     val test = for {
       _ <- io
       state <- c.state.get
-      health <- c.snowflakeHealth.state.get
+      health <- c.appHealth.status()
     } yield List(
       state should beEqualTo(expectedState),
       health should beHealthy
@@ -223,7 +224,7 @@ object ChannelProviderSpec {
   case class Control(
     state: Ref[IO, Vector[Action]],
     channelOpener: Channel.Opener[IO],
-    snowflakeHealth: SnowflakeHealth[IO],
+    appHealth: AppHealth[IO],
     monitoring: Monitoring[IO]
   )
 
@@ -232,9 +233,20 @@ object ChannelProviderSpec {
   def control: IO[Control] =
     for {
       state <- Ref[IO].of(Vector.empty[Action])
-      snowflakeHealth <- SnowflakeHealth.initUnhealthy[IO]
-      _ <- snowflakeHealth.setHealthy() // Simulate the health state after the table has been created
-    } yield Control(state, testChannelOpener(state), snowflakeHealth, testMonitoring(state))
+      appHealth <- testAppHealth()
+    } yield Control(state, testChannelOpener(state), appHealth, testMonitoring(state))
+
+  private def testAppHealth(): IO[AppHealth[IO]] = {
+    val everythingHealthy: Map[AppHealth.Service, Boolean] = Map(Snowflake -> true, BadSink -> true)
+    val healthySource = new SourceAndAck[IO] {
+      override def stream(config: EventProcessingConfig, processor: EventProcessor[IO]): fs2.Stream[IO, Nothing] =
+        fs2.Stream.empty
+
+      override def isHealthy(maxAllowedProcessingLatency: FiniteDuration): IO[SourceAndAck.HealthStatus] =
+        IO(SourceAndAck.Healthy)
+    }
+    AppHealth.init(10.seconds, healthySource, everythingHealthy)
+  }
 
   private def testChannelOpener(state: Ref[IO, Vector[Action]]): Channel.Opener[IO] =
     new Channel.Opener[IO] {

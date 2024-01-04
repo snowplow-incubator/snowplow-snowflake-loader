@@ -12,7 +12,8 @@ import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, SnowflakeHealth, TableManager}
+import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import org.http4s.blaze.client.BlazeClientBuilder
 import org.http4s.client.Client
@@ -25,12 +26,18 @@ case class Environment[F[_]](
   tableManager: TableManager[F],
   channel: Channel.Provider[F],
   metrics: Metrics[F],
+  appHealth: AppHealth[F],
   batching: Config.Batching,
   schemasToSkip: List[SchemaCriterion],
   badRowMaxSize: Int
 )
 
 object Environment {
+
+  private val initialAppHealth: Map[Service, Boolean] = Map(
+    Service.Snowflake -> false,
+    Service.BadSink -> true
+  )
 
   def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     config: Config[SourceConfig, SinkConfig],
@@ -40,19 +47,19 @@ object Environment {
   ): Resource[F, Environment[F]] =
     for {
       _ <- Sentry.capturingAnyException(appInfo, config.monitoring.sentry)
-      snowflakeHealth <- Resource.eval(SnowflakeHealth.initUnhealthy[F])
       sourceAndAck <- Resource.eval(toSource(config.input))
+      appHealth <- Resource.eval(AppHealth.init(config.monitoring.healthProbe.unhealthyLatency, sourceAndAck, initialAppHealth))
       _ <- HealthProbe.resource(
              config.monitoring.healthProbe.port,
-             AppHealth.isHealthy(config.monitoring.healthProbe, sourceAndAck, snowflakeHealth)
+             appHealth.status()
            )
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
       monitoring <- Monitoring.create[F](config.monitoring.webhook, appInfo, httpClient)
       badSink <- toSink(config.output.bad.sink)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
-      tableManager <- Resource.eval(TableManager.make(config.output.good, snowflakeHealth, config.retries, monitoring))
+      tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries, monitoring))
       channelOpener <- Channel.opener(config.output.good, config.batching)
-      channelProvider <- Channel.provider(channelOpener, config.retries, snowflakeHealth, monitoring)
+      channelProvider <- Channel.provider(channelOpener, config.retries, appHealth, monitoring)
     } yield Environment(
       appInfo       = appInfo,
       source        = sourceAndAck,
@@ -61,6 +68,7 @@ object Environment {
       tableManager  = tableManager,
       channel       = channelProvider,
       metrics       = metrics,
+      appHealth     = appHealth,
       batching      = config.batching,
       schemasToSkip = config.skipSchemas,
       badRowMaxSize = config.output.bad.maxRecordSize

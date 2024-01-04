@@ -9,19 +9,21 @@ package com.snowplowanalytics.snowplow.snowflake
 
 import cats.effect.IO
 import cats.effect.kernel.{Ref, Resource, Unique}
-import org.http4s.client.Client
-import fs2.Stream
-
-import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
-import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, Coldswap, TableManager}
 import com.snowplowanalytics.snowplow.runtime.AppInfo
+import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service.{BadSink, Snowflake}
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, Coldswap, TableManager}
+import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
+import fs2.Stream
+import org.http4s.client.Client
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
 
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
 object MockEnvironment {
+
+  private val everythingHealthy: Map[AppHealth.Service, Boolean] = Map(Snowflake -> true, BadSink -> true)
 
   sealed trait Action
   object Action {
@@ -38,30 +40,23 @@ object MockEnvironment {
   }
   import Action._
 
-  /**
-   * Build a mock environment for testing
-   *
-   * @param inputs
-   *   Input events to send into the environment.
-   * @param channelResponses
-   *   Responses we want the `Channel` to return when someone calls `write`
-   * @return
-   *   An environment and a Ref that records the actions make by the environment
-   */
-  def build(inputs: List[TokenedEvents], channelResponses: List[Channel.WriteResult]): Resource[IO, MockEnvironment] =
+  def build(inputs: List[TokenedEvents], mocks: Mocks): Resource[IO, MockEnvironment] =
     for {
       state <- Resource.eval(Ref[IO].of(Vector.empty[Action]))
-      channelResource <- Resource.eval(testChannel(state, channelResponses))
+      source = testSourceAndAck(inputs, state)
+      channelResource <- Resource.eval(testChannel(mocks.channelResponses, state))
       channelColdswap <- Coldswap.make(channelResource)
+      appHealth <- Resource.eval(AppHealth.init(10.seconds, source, everythingHealthy))
     } yield {
       val env = Environment(
         appInfo      = appInfo,
-        source       = testSourceAndAck(inputs, state),
-        badSink      = testSink(state),
+        source       = source,
+        badSink      = testBadSink(mocks.badSinkResponse, state),
         httpClient   = testHttpClient,
         tableManager = testTableManager(state),
         channel      = channelColdswap,
         metrics      = testMetrics(state),
+        appHealth    = appHealth,
         batching = Config.Batching(
           maxBytes          = 16000000,
           maxDelay          = 10.seconds,
@@ -72,6 +67,21 @@ object MockEnvironment {
       )
       MockEnvironment(state, env)
     }
+
+  final case class Mocks(
+    channelResponses: List[Response[Channel.WriteResult]],
+    badSinkResponse: Response[Unit]
+  )
+
+  object Mocks {
+    val default: Mocks = Mocks(channelResponses = List.empty, badSinkResponse = Response.Success(()))
+  }
+
+  sealed trait Response[+A]
+  object Response {
+    final case class Success[A](value: A) extends Response[A]
+    final case class ExceptionThrown(value: Throwable) extends Response[Nothing]
+  }
 
   val appInfo = new AppInfo {
     def name        = "snowflake-loader-test"
@@ -105,48 +115,55 @@ object MockEnvironment {
         IO.pure(SourceAndAck.Healthy)
     }
 
-  private def testSink(ref: Ref[IO, Vector[Action]]): Sink[IO] = Sink[IO] { batch =>
-    ref.update(_ :+ SentToBad(batch.asIterable.size))
-  }
+  private def testBadSink(mockedResponse: Response[Unit], state: Ref[IO, Vector[Action]]): Sink[IO] =
+    Sink[IO] { batch =>
+      mockedResponse match {
+        case Response.Success(_) =>
+          state.update(_ :+ SentToBad(batch.asIterable.size))
+        case Response.ExceptionThrown(value) =>
+          IO.raiseError(value)
+      }
+    }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>
     Resource.raiseError[IO, Nothing, Throwable](new RuntimeException("http failure"))
   }
 
-  /**
-   * Mocked implementation of a `Channel`
-   *
-   * @param actionRef
-   *   Global Ref used to accumulate actions that happened
-   * @param responses
-   *   Responses that this mocked Channel should return each time someone calls `write`. If no
-   *   responses given, then it will return with a successful response.
-   */
   private def testChannel(
-    actionRef: Ref[IO, Vector[Action]],
-    responses: List[Channel.WriteResult]
+    mockedResponses: List[Response[Channel.WriteResult]],
+    actionRef: Ref[IO, Vector[Action]]
   ): IO[Resource[IO, Channel[IO]]] =
-    for {
-      responseRef <- Ref[IO].of(responses)
-    } yield {
+    Ref[IO].of(mockedResponses).map { responses =>
       val make = actionRef.update(_ :+ OpenedChannel).as {
         new Channel[IO] {
           def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] =
             for {
-              response <- responseRef.modify {
+              response <- responses.modify {
                             case head :: tail => (tail, head)
-                            case Nil          => (Nil, Channel.WriteResult.WriteFailures(Nil))
+                            case Nil          => (Nil, Response.Success(Channel.WriteResult.WriteFailures(Nil)))
                           }
-              _ <- response match {
-                     case Channel.WriteResult.WriteFailures(failures) =>
-                       actionRef.update(_ :+ WroteRowsToSnowflake(rows.size - failures.size))
-                     case Channel.WriteResult.ChannelIsInvalid =>
-                       IO.unit
-                   }
-            } yield response
+              writeResult <- response match {
+                               case success: Response.Success[Channel.WriteResult] =>
+                                 updateActions(actionRef, rows, success) *> IO(success.value)
+                               case Response.ExceptionThrown(ex) =>
+                                 IO.raiseError(ex)
+                             }
+            } yield writeResult
+
+          def updateActions(
+            state: Ref[IO, Vector[Action]],
+            rows: Iterable[Map[String, AnyRef]],
+            success: Response.Success[Channel.WriteResult]
+          ): IO[Unit] =
+            success.value match {
+              case Channel.WriteResult.WriteFailures(failures) =>
+                state.update(_ :+ WroteRowsToSnowflake(rows.size - failures.size))
+              case Channel.WriteResult.ChannelIsInvalid =>
+                IO.unit
+            }
+
         }
       }
-
       Resource.make(make)(_ => actionRef.update(_ :+ ClosedChannel))
     }
 
