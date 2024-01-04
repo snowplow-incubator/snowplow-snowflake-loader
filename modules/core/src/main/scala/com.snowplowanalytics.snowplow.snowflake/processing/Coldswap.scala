@@ -96,9 +96,9 @@ object Coldswap {
     ref.get.flatMap {
       case Opened(a, _) => Sync[F].pure(a)
       case Closed =>
-        Sync[F].uncancelable { _ =>
+        Sync[F].uncancelable { poll =>
           for {
-            (a, close) <- resource.allocated
+            (a, close) <- poll(resource.allocated)
             _ <- ref.set(Opened(a, close))
           } yield a
         }
