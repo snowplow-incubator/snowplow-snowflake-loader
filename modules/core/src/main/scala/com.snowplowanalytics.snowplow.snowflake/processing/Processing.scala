@@ -28,7 +28,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Pr
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.snowflake.{Environment, Metrics}
+import com.snowplowanalytics.snowplow.snowflake.{AppHealth, Environment, Metrics}
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.loaders.transform.{BadRowsSerializer, Transform}
@@ -219,23 +219,30 @@ object Processing {
     batch: BatchAfterTransform
   )(
     handleFailures: List[Channel.WriteFailure] => F[BatchAfterTransform]
-  ): F[BatchAfterTransform] =
-    if (batch.toBeInserted.isEmpty)
-      batch.pure[F]
-    else
-      Sync[F].untilDefinedM {
-        env.channel.opened
-          .use { channel =>
-            channel.write(batch.toBeInserted.asIterable.map(_._2))
-          }
-          .flatMap {
-            case Channel.WriteResult.ChannelIsInvalid =>
-              // Reset the channel and immediately try again
-              env.channel.closed.use_.as(none)
-            case Channel.WriteResult.WriteFailures(notWritten) =>
-              handleFailures(notWritten).map(Some(_))
-          }
+  ): F[BatchAfterTransform] = {
+    val attempt: F[BatchAfterTransform] =
+      if (batch.toBeInserted.isEmpty)
+        batch.pure[F]
+      else
+        Sync[F].untilDefinedM {
+          env.channel.opened
+            .use { channel =>
+              channel.write(batch.toBeInserted.asIterable.map(_._2))
+            }
+            .flatMap {
+              case Channel.WriteResult.ChannelIsInvalid =>
+                // Reset the channel and immediately try again
+                env.channel.closed.use_.as(none)
+              case Channel.WriteResult.WriteFailures(notWritten) =>
+                handleFailures(notWritten).map(Some(_))
+            }
+        }
+
+    attempt
+      .onError { _ =>
+        env.appHealth.setServiceHealth(AppHealth.Service.Snowflake, isHealthy = false)
       }
+  }
 
   /**
    * First attempt to write events with the Snowflake SDK
@@ -347,7 +354,7 @@ object Processing {
         env.tableManager.addColumns(extraColsRequired.toList)
       }
 
-  private def sendFailedEvents[F[_]: Applicative](
+  private def sendFailedEvents[F[_]: Sync](
     env: Environment[F],
     badRowProcessor: BadRowProcessor
   ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
@@ -355,7 +362,11 @@ object Processing {
       if (batch.badAccumulated.nonEmpty) {
         val serialized =
           batch.badAccumulated.mapUnordered(badRow => BadRowsSerializer.withMaxSize(badRow, badRowProcessor, env.badRowMaxSize))
-        env.badSink.sinkSimple(serialized)
+        env.badSink
+          .sinkSimple(serialized)
+          .onError { _ =>
+            env.appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = false)
+          }
       } else Applicative[F].unit
     }
 

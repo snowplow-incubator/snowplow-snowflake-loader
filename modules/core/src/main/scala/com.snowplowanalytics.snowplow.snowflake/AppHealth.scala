@@ -10,27 +10,42 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
+import cats.effect.{Concurrent, Ref}
 import cats.implicits._
-import cats.{Functor, Monad, Monoid}
+import cats.{Monad, Monoid, Show}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.{Healthy, Unhealthy}
-import com.snowplowanalytics.snowplow.snowflake.processing.SnowflakeHealth
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 
-object AppHealth {
+import scala.concurrent.duration.FiniteDuration
 
-  def isHealthy[F[_]: Monad](
-    config: Config.HealthProbe,
-    source: SourceAndAck[F],
-    snowflakeHealth: SnowflakeHealth[F]
-  ): F[HealthProbe.Status] =
-    List(
-      sourceIsHealthy(config, source),
-      snowflakeHealth.state.get
-    ).foldA
+final class AppHealth[F[_]: Monad](
+  unhealthyLatency: FiniteDuration,
+  source: SourceAndAck[F],
+  appManagedServices: Ref[F, Map[AppHealth.Service, Boolean]]
+) {
 
-  private def sourceIsHealthy[F[_]: Functor](config: Config.HealthProbe, source: SourceAndAck[F]): F[HealthProbe.Status] =
-    source.isHealthy(config.unhealthyLatency).map {
+  def status(): F[HealthProbe.Status] =
+    for {
+      sourceHealth <- getSourceHealth
+      servicesHealth <- getAppManagedServicesHealth
+    } yield (sourceHealth :: servicesHealth).combineAll
+
+  def setServiceHealth(service: AppHealth.Service, isHealthy: Boolean): F[Unit] =
+    appManagedServices.update { currentHealth =>
+      currentHealth.updated(service, isHealthy)
+    }
+
+  private def getAppManagedServicesHealth: F[List[HealthProbe.Status]] =
+    appManagedServices.get.map { services =>
+      services.map {
+        case (service, false) => HealthProbe.Unhealthy(show"$service is not healthy")
+        case _                => HealthProbe.Healthy
+      }.toList
+    }
+
+  private def getSourceHealth: F[HealthProbe.Status] =
+    source.isHealthy(unhealthyLatency).map {
       case SourceAndAck.Healthy              => HealthProbe.Healthy
       case unhealthy: SourceAndAck.Unhealthy => HealthProbe.Unhealthy(unhealthy.show)
     }
@@ -43,4 +58,28 @@ object AppHealth {
   }
 
   private implicit val healthMonoid: Monoid[HealthProbe.Status] = Monoid.instance(Healthy, combineHealth)
+}
+
+object AppHealth {
+
+  sealed trait Service
+
+  object Service {
+    case object Snowflake extends Service
+    case object BadSink extends Service
+
+    implicit val show: Show[Service] = Show.show {
+      case Snowflake => "Snowflake"
+      case BadSink   => "Bad sink"
+    }
+  }
+
+  def init[F[_]: Concurrent](
+    unhealthyLatency: FiniteDuration,
+    source: SourceAndAck[F],
+    initialHealth: Map[AppHealth.Service, Boolean]
+  ): F[AppHealth[F]] =
+    Ref
+      .of[F, Map[AppHealth.Service, Boolean]](initialHealth)
+      .map(appManaged => new AppHealth[F](unhealthyLatency, source, appManaged))
 }
