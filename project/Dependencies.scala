@@ -29,6 +29,7 @@ object Dependencies {
     val jaxb      = "2.3.1"
     val awsSdk2   = "2.20.135"
     val netty     = "4.1.100.Final" // Version override
+    val reactor   = "1.0.39" // Version override
 
     // Snowplow
     val streams = "0.3.0-M2"
@@ -55,6 +56,7 @@ object Dependencies {
   val jaxb            = "javax.xml.bind"          % "jaxb-api"             % V.jaxb
   val stsSdk2         = "software.amazon.awssdk"  % "sts"                  % V.awsSdk2
   val nettyCodecHttp  = "io.netty"                % "netty-codec-http2"    % V.netty
+  val reactorNetty    = "io.projectreactor.netty" % "reactor-netty-http"   % V.reactor
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -91,7 +93,8 @@ object Dependencies {
     slf4j % Runtime,
     jaxb  % Runtime,
     azureIdentity,
-    nettyCodecHttp
+    nettyCodecHttp,
+    reactorNetty
   )
 
   val pubsubDependencies = Seq(
