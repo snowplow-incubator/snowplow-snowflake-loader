@@ -28,6 +28,7 @@ object Dependencies {
     val snowflake = "2.0.3"
     val jaxb      = "2.3.1"
     val awsSdk2   = "2.20.135"
+    val netty     = "4.1.100.Final" // Version override
 
     // Snowplow
     val streams = "0.3.0-M2"
@@ -47,12 +48,13 @@ object Dependencies {
   val doobie            = "org.tpolecat"     %% "doobie-core"          % V.doobie
 
   // java
-  val slf4j           = "org.slf4j"              % "slf4j-simple"         % V.slf4j
-  val azureIdentity   = "com.azure"              % "azure-identity"       % V.azureSdk
-  val sentry          = "io.sentry"              % "sentry"               % V.sentry
-  val snowflakeIngest = "net.snowflake"          % "snowflake-ingest-sdk" % V.snowflake
-  val jaxb            = "javax.xml.bind"         % "jaxb-api"             % V.jaxb
-  val stsSdk2         = "software.amazon.awssdk" % "sts"                  % V.awsSdk2
+  val slf4j           = "org.slf4j"               % "slf4j-simple"         % V.slf4j
+  val azureIdentity   = "com.azure"               % "azure-identity"       % V.azureSdk
+  val sentry          = "io.sentry"               % "sentry"               % V.sentry
+  val snowflakeIngest = "net.snowflake"           % "snowflake-ingest-sdk" % V.snowflake
+  val jaxb            = "javax.xml.bind"          % "jaxb-api"             % V.jaxb
+  val stsSdk2         = "software.amazon.awssdk"  % "sts"                  % V.awsSdk2
+  val nettyCodecHttp  = "io.netty"                % "netty-codec-http2"    % V.netty
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -88,7 +90,8 @@ object Dependencies {
     kafka,
     slf4j % Runtime,
     jaxb  % Runtime,
-    azureIdentity
+    azureIdentity,
+    nettyCodecHttp
   )
 
   val pubsubDependencies = Seq(
@@ -101,7 +104,8 @@ object Dependencies {
     kinesis,
     jaxb    % Runtime,
     slf4j   % Runtime,
-    stsSdk2 % Runtime
+    stsSdk2 % Runtime,
+    nettyCodecHttp
   )
 
 }
