@@ -106,7 +106,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(
           Channel.WriteResult.WriteFailures(
             List(
-              Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), new SFException(ErrorCode.INVALID_FORMAT_ROW))
+              Channel.WriteFailure(0L, List("unstruct_event_xyz_1", "contexts_abc_2"), newSFException(ErrorCode.INVALID_FORMAT_ROW))
             )
           )
         ),
@@ -141,7 +141,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(
           Channel.WriteResult.WriteFailures(
             List(
-              Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INVALID_FORMAT_ROW))
+              Channel.WriteFailure(0L, Nil, newSFException(ErrorCode.INVALID_FORMAT_ROW))
             )
           )
         ),
@@ -173,7 +173,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(
           Channel.WriteResult.WriteFailures(
             List(
-              Channel.WriteFailure(0L, Nil, new SFException(ErrorCode.INTERNAL_ERROR))
+              Channel.WriteFailure(0L, Nil, newSFException(ErrorCode.INTERNAL_ERROR))
             )
           )
         ),
@@ -287,7 +287,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(
           Channel.WriteResult.WriteFailures(
             List(
-              Channel.WriteFailure(0L, List.empty, new SFException(ErrorCode.INTERNAL_ERROR))
+              Channel.WriteFailure(0L, List.empty, newSFException(ErrorCode.INTERNAL_ERROR))
             )
           )
         )
@@ -346,5 +346,12 @@ object ProcessingSpec {
       val serialized = Chunk("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
       TokenedEvents(serialized, token, None)
     }
+
+  // Helper to create a SFException, and remove the stacktrace so we don't clutter our test logs.
+  private def newSFException(errorCode: ErrorCode): SFException = {
+    val t = new SFException(errorCode)
+    t.setStackTrace(Array()) // don't clutter our test logs
+    t
+  }
 
 }

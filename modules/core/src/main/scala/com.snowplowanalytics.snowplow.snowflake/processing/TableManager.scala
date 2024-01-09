@@ -40,21 +40,15 @@ object TableManager {
       new TableManager[F] {
 
         override def initializeEventsTable(): F[Unit] =
-          SnowflakeRetrying.retryIndefinitely(appHealth, retriesConfig) {
+          SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToCreateEventsTable(_)) {
             Logger[F].info(s"Opening JDBC connection to ${config.url.getJdbcUrl}") *>
               executeInitTableQuery()
-                .onError { cause =>
-                  monitoring.alert(Alert.FailedToCreateEventsTable(cause))
-                }
           }
 
         override def addColumns(columns: List[String]): F[Unit] =
-          SnowflakeRetrying.retryIndefinitely(appHealth, retriesConfig) {
+          SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToAddColumns(columns, _)) {
             Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]") *>
               executeAddColumnsQuery(columns)
-                .onError { cause =>
-                  monitoring.alert(Alert.FailedToAddColumns(columns, cause))
-                }
           }
 
         def executeInitTableQuery(): F[Unit] = {

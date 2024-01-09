@@ -15,6 +15,8 @@ import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
 
 import scala.concurrent.duration.{DurationLong, FiniteDuration}
+import java.sql.SQLException
+
 import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe
 import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service.{BadSink, Snowflake}
@@ -91,7 +93,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e4 = control.flatMap { c =>
     // An channel opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] = goBOOM
+      def open: IO[Channel.CloseableChannel[IO]] = raiseForSetupError
     }
 
     val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
@@ -122,7 +124,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e5 = control.flatMap { c =>
     // An opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] = goBOOM
+      def open: IO[Channel.CloseableChannel[IO]] = raiseForSetupError
     }
 
     // Three concurrent fibers wanting to open the channel:
@@ -162,7 +164,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
         def open: IO[Channel.CloseableChannel[IO]] =
           hasThrownException.get.flatMap {
             case false =>
-              hasThrownException.set(true) *> goBOOM
+              hasThrownException.set(true) *> raiseForSetupError
             case true =>
               c.channelOpener.open
           }
@@ -228,7 +230,7 @@ object ChannelProviderSpec {
     monitoring: Monitoring[IO]
   )
 
-  def retriesConfig = Config.Retries(backoff = 30.seconds)
+  def retriesConfig = Config.Retries(Config.SetupErrorRetries(30.seconds), Config.TransientErrorRetries(1.second, 5))
 
   def control: IO[Control] =
     for {
@@ -270,6 +272,12 @@ object ChannelProviderSpec {
 
   // Raise an exception in an IO
   def goBOOM[A]: IO[A] = IO.raiseError(new RuntimeException("boom!")).adaptError { t =>
+    t.setStackTrace(Array()) // don't clutter our test logs
+    t
+  }
+
+  // Raise a known exception that indicates a problem with the warehouse setup
+  def raiseForSetupError[A]: IO[A] = IO.raiseError(new SQLException("boom!", "02000", 2003)).adaptError { t =>
     t.setStackTrace(Array()) // don't clutter our test logs
     t
   }
