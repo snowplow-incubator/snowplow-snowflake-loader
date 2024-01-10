@@ -38,18 +38,18 @@ object SnowflakeRetrying {
     action
       .onError(_ => appHealth.setServiceHealth(AppHealth.Service.Snowflake, isHealthy = false))
       .retryingOnSomeErrors(
-        isWorthRetrying = requiresConfigChange[F](_),
+        isWorthRetrying = isSetupError[F](_),
         policy          = policyForSetupErrors[F](config),
         onError         = logErrorAndSendAlert[F](monitoring, toAlert, _, _)
       )
       .retryingOnSomeErrors(
-        isWorthRetrying = requiresConfigChange[F](_).map(!_),
-        policy          = policy[F](config),
+        isWorthRetrying = _ => Sync[F].pure(true),
+        policy          = policyForTransientErrors[F](config),
         onError         = logError[F](_, _)
       )
 
-  /** Distinguishes whether this error is categorized as "setup" error or "transient" error */
-  private def requiresConfigChange[F[_]: Sync](t: Throwable): F[Boolean] = t match {
+  /** Is an error associated with setting up Snowflake as a destination */
+  private def isSetupError[F[_]: Sync](t: Throwable): F[Boolean] = t match {
     case CausedByIngestResponseException(ire) if ire.getErrorCode === 403 =>
       true.pure[F]
     case _: SecurityException =>
@@ -65,7 +65,7 @@ object SnowflakeRetrying {
   private def policyForSetupErrors[F[_]: Applicative](config: Config.Retries): RetryPolicy[F] =
     RetryPolicies.exponentialBackoff[F](config.setupErrors.delay)
 
-  private def policy[F[_]: Applicative](config: Config.Retries): RetryPolicy[F] =
+  private def policyForTransientErrors[F[_]: Applicative](config: Config.Retries): RetryPolicy[F] =
     RetryPolicies.fullJitter[F](config.transientErrors.delay).join(RetryPolicies.limitRetries(config.transientErrors.attempts - 1))
 
   private def logErrorAndSendAlert[F[_]: Sync](

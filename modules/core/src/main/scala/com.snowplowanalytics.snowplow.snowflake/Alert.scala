@@ -19,6 +19,7 @@ object Alert {
   final case class FailedToCreateEventsTable(cause: Throwable) extends Alert
   final case class FailedToAddColumns(columns: List[String], cause: Throwable) extends Alert
   final case class FailedToOpenSnowflakeChannel(cause: Throwable) extends Alert
+  final case class FailedToParsePrivateKey(cause: Throwable) extends Alert
 
   def toSelfDescribingJson(
     alert: Alert,
@@ -40,6 +41,7 @@ object Alert {
       case FailedToCreateEventsTable(cause)    => show"Failed to create events table: $cause"
       case FailedToAddColumns(columns, cause)  => show"Failed to add columns: ${columns.mkString("[", ",", "]")}. Cause: $cause"
       case FailedToOpenSnowflakeChannel(cause) => show"Failed to open Snowflake channel: $cause"
+      case FailedToParsePrivateKey(cause)      => show"Failed to parse private key: $cause"
     }
 
     full.take(MaxAlertPayloadLength)

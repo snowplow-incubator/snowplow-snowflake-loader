@@ -30,9 +30,11 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     Make no actions if the provider is never used $e1
     Manage channel lifecycle after a channel is opened $e2
     Manage channel lifecycle after an exception using the channel $e3
-    Retry opening a channel when there is an exception opening the channel $e4
-    Retry according to a single backoff policy when multiple concurrent fibers want to open a channel $e5
-    Become healthy after recovering from an earlier failure $e6
+    Retry opening a channel and send alerts when there is an setup exception opening the channel $e4
+    Retry opening a channel if there is a transient exception opening the channel, with limited number of attempts and no monitoring alerts $e5
+    Retry setup error according to a single backoff policy when multiple concurrent fibers want to open a channel $e6
+    Become healthy after recovering from an earlier setup error $e7
+    Become healthy after recovering from an earlier transient error $e8
   """
 
   def e1 = control.flatMap { c =>
@@ -93,7 +95,8 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e4 = control.flatMap { c =>
     // An channel opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] = raiseForSetupError
+      def open: IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open *> raiseForSetupError
     }
 
     val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
@@ -101,9 +104,13 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     val expectedState = Vector(
+      Action.OpenedChannel,
       Action.SentAlert(0L),
+      Action.OpenedChannel,
       Action.SentAlert(30L),
+      Action.OpenedChannel,
       Action.SentAlert(90L),
+      Action.OpenedChannel,
       Action.SentAlert(210L)
     )
 
@@ -122,9 +129,41 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   }
 
   def e5 = control.flatMap { c =>
+    // An channel opener that throws an exception when trying to open a channel
+    val throwingOpener = new Channel.Opener[IO] {
+      def open: IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open *> goBOOM
+    }
+
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
+      provider.opened.use_
+    }
+
+    val expectedState = Vector(
+      Action.OpenedChannel,
+      Action.OpenedChannel,
+      Action.OpenedChannel,
+      Action.OpenedChannel,
+      Action.OpenedChannel
+    )
+
+    val test = for {
+      _ <- io.voidError
+      state <- c.state.get
+      health <- c.appHealth.status()
+    } yield List(
+      state should beEqualTo(expectedState),
+      health should beUnhealthy
+    ).reduce(_ and _)
+
+    TestControl.executeEmbed(test)
+  }
+
+  def e6 = control.flatMap { c =>
     // An opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] = raiseForSetupError
+      def open: IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open *> raiseForSetupError
     }
 
     // Three concurrent fibers wanting to open the channel:
@@ -138,9 +177,13 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     val expectedState = Vector(
+      Action.OpenedChannel,
       Action.SentAlert(0L),
+      Action.OpenedChannel,
       Action.SentAlert(30L),
+      Action.OpenedChannel,
       Action.SentAlert(90L),
+      Action.OpenedChannel,
       Action.SentAlert(210L)
     )
 
@@ -157,14 +200,14 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     TestControl.executeEmbed(test)
   }
 
-  def e6 = control.flatMap { c =>
+  def e7 = control.flatMap { c =>
     // An channel opener that throws an exception *once* and is healthy thereafter
     val throwingOnceOpener = Ref[IO].of(false).map { hasThrownException =>
       new Channel.Opener[IO] {
         def open: IO[Channel.CloseableChannel[IO]] =
           hasThrownException.get.flatMap {
             case false =>
-              hasThrownException.set(true) *> raiseForSetupError
+              hasThrownException.set(true) *> c.channelOpener.open *> raiseForSetupError
             case true =>
               c.channelOpener.open
           }
@@ -178,7 +221,45 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     val expectedState = Vector(
+      Action.OpenedChannel,
       Action.SentAlert(0L),
+      Action.OpenedChannel,
+      Action.ClosedChannel
+    )
+
+    val test = for {
+      _ <- io
+      state <- c.state.get
+      health <- c.appHealth.status()
+    } yield List(
+      state should beEqualTo(expectedState),
+      health should beHealthy
+    ).reduce(_ and _)
+    TestControl.executeEmbed(test)
+  }
+
+  def e8 = control.flatMap { c =>
+    // An channel opener that throws an exception *once* and is healthy thereafter
+    val throwingOnceOpener = Ref[IO].of(false).map { hasThrownException =>
+      new Channel.Opener[IO] {
+        def open: IO[Channel.CloseableChannel[IO]] =
+          hasThrownException.get.flatMap {
+            case false =>
+              hasThrownException.set(true) *> c.channelOpener.open *> goBOOM
+            case true =>
+              c.channelOpener.open
+          }
+      }
+    }
+
+    val io = throwingOnceOpener.flatMap { channelOpener =>
+      Channel.provider(channelOpener, retriesConfig, c.appHealth, c.monitoring).use { provider =>
+        provider.opened.use_
+      }
+    }
+
+    val expectedState = Vector(
+      Action.OpenedChannel,
       Action.OpenedChannel,
       Action.ClosedChannel
     )

@@ -36,7 +36,7 @@ object TableManager {
     retriesConfig: Config.Retries,
     monitoring: Monitoring[F]
   ): F[TableManager[F]] =
-    JdbcTransactor.make(config).map { transactor =>
+    JdbcTransactor.make(config, monitoring).map { transactor =>
       new TableManager[F] {
 
         override def initializeEventsTable(): F[Unit] =
