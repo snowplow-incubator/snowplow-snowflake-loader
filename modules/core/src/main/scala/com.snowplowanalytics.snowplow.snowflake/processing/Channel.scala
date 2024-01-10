@@ -9,6 +9,7 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Poll, Resource, Sync}
 import cats.implicits._
+import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
 import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
 import net.snowflake.ingest.streaming._
