@@ -13,9 +13,10 @@ package com.snowplowanalytics.snowplow.snowflake
 import cats.effect.IO
 import cats.effect.kernel.{Ref, Resource, Unique}
 import com.snowplowanalytics.snowplow.runtime.AppInfo
+import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service.{BadSink, Snowflake}
-import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, Coldswap, TableManager}
+import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import fs2.Stream
 import org.http4s.client.Client

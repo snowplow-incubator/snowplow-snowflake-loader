@@ -33,7 +33,7 @@ object Dependencies {
     val snappy    = "1.1.10.4" // Version override
 
     // Snowplow
-    val streams = "0.3.0-M2"
+    val streams = "0.3.0"
 
     // tests
     val specs2           = "4.20.0"
