@@ -58,7 +58,7 @@ object Environment {
       badSink <- toSink(config.output.bad.sink)
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
       tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries, monitoring))
-      channelOpener <- Channel.opener(config.output.good, config.batching)
+      channelOpener <- Channel.opener(config.output.good, config.batching, config.retries, monitoring, appHealth)
       channelProvider <- Channel.provider(channelOpener, config.retries, appHealth, monitoring)
     } yield Environment(
       appInfo       = appInfo,
