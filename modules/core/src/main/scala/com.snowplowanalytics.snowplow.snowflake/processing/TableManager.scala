@@ -9,7 +9,7 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Sync}
 import cats.implicits._
-import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, JdbcTransactor, Monitoring}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import doobie.implicits._
 import doobie.{ConnectionIO, Fragment}
 import net.snowflake.client.jdbc.SnowflakeSQLException
@@ -36,7 +36,7 @@ object TableManager {
     retriesConfig: Config.Retries,
     monitoring: Monitoring[F]
   ): F[TableManager[F]] =
-    JdbcTransactor.make(config, monitoring).map { transactor =>
+    JdbcTransactor.make(config, monitoring, appHealth).map { transactor =>
       new TableManager[F] {
 
         override def initializeEventsTable(): F[Unit] =

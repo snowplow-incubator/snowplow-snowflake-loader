@@ -5,7 +5,7 @@
  * and you may not use this file except in compliance with the Snowplow Community License Version 1.0.
  * You may obtain a copy of the Snowplow Community License Version 1.0 at https://docs.snowplow.io/community-license-1.0
  */
-package com.snowplowanalytics.snowplow.snowflake
+package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Sync}
 import cats.implicits._
@@ -17,19 +17,29 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import java.security.PrivateKey
 import java.util.Properties
 
+import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
+
 object JdbcTransactor {
 
   private val driver: String = "net.snowflake.client.jdbc.SnowflakeDriver"
 
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
-  def make[F[_]: Async](config: Config.Snowflake, monitoring: Monitoring[F]): F[Transactor[F]] =
+  def make[F[_]: Async](
+    config: Config.Snowflake,
+    monitoring: Monitoring[F],
+    appHealth: AppHealth[F]
+  ): F[Transactor[F]] =
     for {
-      privateKey <- parsePrivateKey[F](config, monitoring)
+      privateKey <- parsePrivateKey[F](config, monitoring, appHealth)
       props = jdbcProperties(config, privateKey)
     } yield Transactor.fromDriverManager[F](driver, config.url.getJdbcUrl, props, None)
 
-  private def parsePrivateKey[F[_]: Async](config: Config.Snowflake, monitoring: Monitoring[F]): F[PrivateKey] =
+  private def parsePrivateKey[F[_]: Async](
+    config: Config.Snowflake,
+    monitoring: Monitoring[F],
+    appHealth: AppHealth[F]
+  ): F[PrivateKey] =
     Sync[F]
       .delay { // Wrap in Sync because these can raise exceptions
         config.privateKeyPassphrase match {
@@ -41,6 +51,7 @@ object JdbcTransactor {
       }
       .onError { e =>
         Logger[F].error(e)("Could not parse the Snowflake private key. Will do nothing but wait for loader to be killed") *>
+          appHealth.setServiceHealth(AppHealth.Service.Snowflake, false) *>
           // This is a type of "setup" error, so we send a monitoring alert
           monitoring.alert(Alert.FailedToParsePrivateKey(e)) *>
           // We don't want to crash and exit, because we don't want to spam Sentry with exceptions about setup errors.
