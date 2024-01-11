@@ -42,10 +42,9 @@ object SnowflakeRetrying {
         policy          = policyForSetupErrors[F](config),
         onError         = logErrorAndSendAlert[F](monitoring, toAlert, _, _)
       )
-      .retryingOnSomeErrors(
-        isWorthRetrying = _ => Sync[F].pure(true),
-        policy          = policyForTransientErrors[F](config),
-        onError         = logError[F](_, _)
+      .retryingOnAllErrors(
+        policy  = policyForTransientErrors[F](config),
+        onError = logError[F](_, _)
       )
 
   /** Is an error associated with setting up Snowflake as a destination */
