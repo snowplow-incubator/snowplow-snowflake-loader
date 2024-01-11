@@ -82,8 +82,20 @@
   
   # Retry configuration for Snowflake operation failures
   "retries": {
-    # Starting backoff period
-    "backoff": "30 seconds"
+
+    # -- Configures exponential backoff on errors related to how Snowflake is set up for this loader.
+    # -- Examples include authentication errors and permissions errors.
+    # -- This class of errors are reported periodically to the monitoring webhook.
+    "setupErrors": {
+      "delay": "30 seconds"
+    }
+
+    # -- Configures exponential backoff  errors that are likely to be transient.
+    # -- Examples include server errors and network errors
+    "transientErrors": {
+      "delay": "1 second"
+      "attempts": 5
+    }
   } 
 
   # -- Schemas that won't be loaded to Snowflake. Optional, default value []

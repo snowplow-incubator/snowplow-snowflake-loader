@@ -39,7 +39,8 @@ object Monitoring {
         config match {
           case Some(webhookConfig) =>
             val request = buildHttpRequest(webhookConfig, message)
-            executeHttpRequest(webhookConfig, httpClient, request)
+            Logger[F].info(show"Sending alert to ${webhookConfig.endpoint} with details of the setup error...") *>
+              executeHttpRequest(webhookConfig, httpClient, request)
           case None =>
             Logger[F].debug("Webhook monitoring is not configured, skipping alert")
         }
@@ -58,11 +59,13 @@ object Monitoring {
           .use { response =>
             if (response.status.isSuccess) Sync[F].unit
             else {
-              response.as[String].flatMap(body => Logger[F].error(s"Webhook ${webhookConfig.endpoint} returned non-2xx response:\n$body"))
+              response
+                .as[String]
+                .flatMap(body => Logger[F].error(show"Webhook ${webhookConfig.endpoint} returned non-2xx response:\n$body"))
             }
           }
           .handleErrorWith { e =>
-            Logger[F].error(e)(s"Webhook ${webhookConfig.endpoint} resulted in exception without a response")
+            Logger[F].error(e)(show"Webhook ${webhookConfig.endpoint} resulted in exception without a response")
           }
     }
   }

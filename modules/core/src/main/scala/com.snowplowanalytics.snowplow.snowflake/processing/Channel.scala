@@ -98,9 +98,15 @@ object Channel {
 
   }
 
-  def opener[F[_]: Async](config: Config.Snowflake, batchingConfig: Config.Batching): Resource[F, Opener[F]] =
+  def opener[F[_]: Async](
+    config: Config.Snowflake,
+    batchingConfig: Config.Batching,
+    retriesConfig: Config.Retries,
+    monitoring: Monitoring[F],
+    appHealth: AppHealth[F]
+  ): Resource[F, Opener[F]] =
     for {
-      client <- createClient(config, batchingConfig)
+      client <- createClient(config, batchingConfig, retriesConfig, monitoring, appHealth)
     } yield new Opener[F] {
       def open: F[CloseableChannel[F]] = createChannel[F](config, client).map(impl[F])
     }
@@ -121,11 +127,8 @@ object Channel {
   ): Resource[F, Channel[F]] = {
 
     def make(poll: Poll[F]) = poll {
-      SnowflakeRetrying.retryIndefinitely(health, retries) {
+      SnowflakeRetrying.withRetries(health, retries, monitoring, Alert.FailedToOpenSnowflakeChannel(_)) {
         opener.open
-          .onError { cause =>
-            monitoring.alert(Alert.FailedToOpenSnowflakeChannel(cause))
-          }
       }
     }
 
@@ -211,18 +214,25 @@ object Channel {
     props
   }
 
-  private def createClient[F[_]: Sync](
+  private def createClient[F[_]: Async](
     config: Config.Snowflake,
-    batchingConfig: Config.Batching
+    batchingConfig: Config.Batching,
+    retriesConfig: Config.Retries,
+    monitoring: Monitoring[F],
+    appHealth: AppHealth[F]
   ): Resource[F, SnowflakeStreamingIngestClient] = {
-    val make = Sync[F].delay {
-      SnowflakeStreamingIngestClientFactory
-        .builder("snowplow") // client name is not important
-        .setProperties(channelProperties(config, batchingConfig))
-        // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
-        .build
+    def make(poll: Poll[F]) = poll {
+      SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToOpenSnowflakeChannel(_)) {
+        Sync[F].blocking {
+          SnowflakeStreamingIngestClientFactory
+            .builder("snowplow") // client name is not important
+            .setProperties(channelProperties(config, batchingConfig))
+            // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
+            .build
+        }
+      }
     }
-    Resource.fromAutoCloseable(make)
+    Resource.makeFull(make)(client => Sync[F].blocking(client.close()))
   }
 
   /**
