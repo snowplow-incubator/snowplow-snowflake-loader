@@ -37,6 +37,7 @@ object Processing {
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
     Stream.eval(env.tableManager.initializeEventsTable()) *>
+      Stream.eval(env.channel.opened.use_) *>
       env.source.stream(eventProcessingConfig, eventProcessor(env))
   }
 

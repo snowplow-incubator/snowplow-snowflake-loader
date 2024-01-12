@@ -67,6 +67,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       } yield state should beEqualTo(
         Vector(
           Action.InitEventsTable,
+          Action.OpenedChannel,
           Action.SentToBad(6),
           Action.AddedGoodCountMetric(0),
           Action.AddedBadCountMetric(6),
@@ -240,9 +241,9 @@ class ProcessingSpec extends Specification with CatsEffect {
       } yield state should beEqualTo(
         Vector(
           Action.InitEventsTable,
-          Action.SetLatencyMetric(42123),
-          Action.SetLatencyMetric(42123),
           Action.OpenedChannel,
+          Action.SetLatencyMetric(42123),
+          Action.SetLatencyMetric(42123),
           Action.WroteRowsToSnowflake(4),
           Action.AddedGoodCountMetric(4),
           Action.AddedBadCountMetric(0),
