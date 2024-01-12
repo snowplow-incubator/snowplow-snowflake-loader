@@ -53,6 +53,12 @@ object BuildSettings {
       )
     ),
     headerMappings := headerMappings.value + (HeaderFileType.conf -> HeaderCommentStyle.hashLineComment),
+
+    // used in extended configuration parsing unit tests
+    Test / envVars := Map(
+      "SNOWFLAKE_PRIVATE_KEY" -> "secretPrivateKey",
+      "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase"
+    )
   )
 
   lazy val appSettings = Seq(
@@ -61,19 +67,33 @@ object BuildSettings {
     buildInfoOptions += BuildInfoOption.Traits("com.snowplowanalytics.snowplow.runtime.AppInfo")
   ) ++ commonSettings
 
-  lazy val kafkaSettings = appSettings ++ Seq(
+  lazy val kafkaSettings = appSettings ++ addExampleConfToTestCp ++ Seq(
     name := "snowflake-loader-kafka",
     buildInfoKeys += BuildInfoKey("cloud" -> "Azure")
   )
 
-  lazy val pubsubSettings = appSettings ++ Seq(
+  lazy val pubsubSettings = appSettings ++ addExampleConfToTestCp ++ Seq(
     name := "snowflake-loader-pubsub",
     buildInfoKeys += BuildInfoKey("cloud" -> "GCP")
   )
 
-  lazy val kinesisSettings = appSettings ++ Seq(
+  lazy val kinesisSettings = appSettings ++ addExampleConfToTestCp ++ Seq(
     name := "snowflake-loader-kinesis",
     buildInfoKeys += BuildInfoKey("cloud" -> "AWS")
+  )
+
+  lazy val addExampleConfToTestCp = Seq(
+    Test / unmanagedClasspath += {
+      if (baseDirectory.value.getPath.contains("distroless")) {
+        // baseDirectory is like 'root/modules/distroless/module',
+        // we're at 'module' and need to get to 'root/config/'
+        baseDirectory.value.getParentFile.getParentFile.getParentFile / "config"
+      } else {
+        // baseDirectory is like 'root/modules/module',
+        // we're at 'module' and need to get to 'root/config/'
+        baseDirectory.value.getParentFile.getParentFile / "config"
+      }
+    }
   )
 
 }

@@ -44,7 +44,7 @@ object TableManager {
 
         override def initializeEventsTable(): F[Unit] =
           SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToCreateEventsTable(_)) {
-            Logger[F].info(s"Opening JDBC connection to ${config.url.getJdbcUrl}") *>
+            Logger[F].info(s"Opening JDBC connection to ${config.url.jdbc}") *>
               executeInitTableQuery()
           }
 

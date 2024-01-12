@@ -122,7 +122,7 @@
         "period": "1 minute"
 
         # -- Prefix used for the metric name when sending to statsd
-        "prefix": "snowplow.lakeloader"
+        "prefix": "snowplow.snowflake.loader"
       }
     }
 

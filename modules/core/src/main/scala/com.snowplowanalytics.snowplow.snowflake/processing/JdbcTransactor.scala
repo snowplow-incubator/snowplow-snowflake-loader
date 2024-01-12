@@ -36,7 +36,7 @@ object JdbcTransactor {
     for {
       privateKey <- parsePrivateKey[F](config, monitoring, appHealth)
       props = jdbcProperties(config, privateKey)
-    } yield Transactor.fromDriverManager[F](driver, config.url.getJdbcUrl, props, None)
+    } yield Transactor.fromDriverManager[F](driver, config.url.jdbc, props, None)
 
   private def parsePrivateKey[F[_]: Async](
     config: Config.Snowflake,

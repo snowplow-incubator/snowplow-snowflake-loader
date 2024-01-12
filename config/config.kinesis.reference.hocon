@@ -46,7 +46,7 @@
       "privateKey": ${SNOWFLAKE_PRIVATE_KEY}
 
       # -- optional, passphrase for the private key
-      "privateKeyPassphrase": ${?SNOWFLAKE_PRIVATE_KEY_PASSPHRASE}
+      "privateKeyPassphrase": ${?SNOWFLAKE_PRIVATE_KEY_PASSPHRASE} 
 
       # -- optional, snowflake role which the snowflake user should assume
       "role": "snowplow_loader"
@@ -143,7 +143,7 @@
         "period": "1 minute"
 
         # -- Prefix used for the metric name when sending to statsd
-        "prefix": "snowplow.lakeloader"
+        "prefix": "snowplow.snowflake.loader"
       }
     }
 

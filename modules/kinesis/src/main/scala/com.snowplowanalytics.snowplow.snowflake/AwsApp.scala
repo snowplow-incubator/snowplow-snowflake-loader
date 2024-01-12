@@ -13,7 +13,7 @@ package com.snowplowanalytics.snowplow.snowflake
 import com.snowplowanalytics.snowplow.sources.kinesis.{KinesisSource, KinesisSourceConfig}
 import com.snowplowanalytics.snowplow.sinks.kinesis.{KinesisSink, KinesisSinkConfig}
 
-object GcpApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInfo) {
+object AwsApp extends LoaderApp[KinesisSourceConfig, KinesisSinkConfig](BuildInfo) {
 
   override def source: SourceProvider = KinesisSource.build(_)
 

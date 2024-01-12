@@ -49,7 +49,7 @@ object Config {
   case class SinkWithMaxSize[+Sink](sink: Sink, maxRecordSize: Int)
 
   case class Snowflake(
-    url: SnowflakeURL,
+    url: Snowflake.Url,
     user: String,
     privateKey: String,
     privateKeyPassphrase: Option[String],
@@ -62,6 +62,10 @@ object Config {
     jdbcNetworkTimeout: FiniteDuration,
     jdbcQueryTimeout: FiniteDuration
   )
+
+  object Snowflake {
+    case class Url(full: String, jdbc: String)
+  }
 
   case class Batching(
     maxBytes: Long,
@@ -102,7 +106,10 @@ object Config {
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
-      Try(new SnowflakeURL(str))
+      Try {
+        val sdkUrl = new SnowflakeURL(str)
+        Snowflake.Url(sdkUrl.getFullUrl, sdkUrl.getJdbcUrl)
+      }
     }
     implicit val snowflake = deriveConfiguredDecoder[Snowflake]
     implicit val sinkWithMaxSize = for {
