@@ -65,7 +65,10 @@ object SnowflakeRetrying {
       // Authentication failure, i.e. user unrecognized or bad private key
       true.pure[F]
     case sql: java.sql.SQLException if sql.getErrorCode === 2003 =>
-      // Object does not exist or not authorized
+      // Object does not exist or not authorized to view it
+      true.pure[F]
+    case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
+      // Insufficient privileges
       true.pure[F]
     case _ =>
       false.pure[F]

@@ -62,6 +62,10 @@ object TableManager {
               Logger[ConnectionIO].info(s"Creating table $tableName if it does not already exist...") *>
                 sqlCreateTable(tableName).update.run.void
             }
+            .recoverWith {
+              case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
+                Logger[F].info(s"Access denied when trying to create table. Will ignore error and assume table already exists.")
+            }
         }
 
         def executeAddColumnsQuery(columns: List[String]): F[Unit] =
