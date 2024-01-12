@@ -196,7 +196,7 @@ object Channel {
     props.setProperty("private_key", config.privateKey)
     config.privateKeyPassphrase.foreach(props.setProperty("private_key_passphrase", _))
     config.role.foreach(props.setProperty("role", _))
-    props.setProperty("url", config.url.getFullUrl)
+    props.setProperty("url", config.url.full)
     props.setProperty(ParameterProvider.ENABLE_SNOWPIPE_STREAMING_METRICS, "false")
 
     // Disable SDK's background flushing because we manage it ourselves

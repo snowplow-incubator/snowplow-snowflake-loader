@@ -15,7 +15,6 @@ import org.specs2.Specification
 import org.specs2.matcher.MatchResult
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
-import net.snowflake.ingest.utils.SnowflakeURL
 
 import com.snowplowanalytics.snowplow.runtime.HealthProbe
 import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, MockEnvironment, Monitoring}
@@ -177,7 +176,7 @@ object JdbcTransactorSpec {
   val goodEncryptedKeyPassphrase = "password1"
 
   val goodConfig: Config.Snowflake = Config.Snowflake(
-    url                  = new SnowflakeURL("https://abcdefg-example.snowflakecomputing.com"),
+    url                  = Config.Snowflake.Url("unused", "unused"),
     user                 = "snowplow",
     privateKey           = goodUnencryptedKey,
     privateKeyPassphrase = None,

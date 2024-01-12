@@ -95,13 +95,17 @@ object Dependencies {
     azureIdentity,
     nettyCodecHttp,
     reactorNetty,
-    snappyJava
+    snappyJava,
+    specs2,
+    catsEffectSpecs2
   )
 
   val pubsubDependencies = Seq(
     pubsub,
     jaxb  % Runtime,
-    slf4j % Runtime
+    slf4j % Runtime,
+    specs2,
+    catsEffectSpecs2
   )
 
   val kinesisDependencies = Seq(
@@ -109,7 +113,9 @@ object Dependencies {
     jaxb    % Runtime,
     slf4j   % Runtime,
     stsSdk2 % Runtime,
-    nettyCodecHttp
+    nettyCodecHttp,
+    specs2,
+    catsEffectSpecs2
   )
 
 }
