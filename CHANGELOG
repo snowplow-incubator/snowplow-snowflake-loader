@@ -1,3 +1,23 @@
+Version 0.2.0 (2024-01-16)
+--------------------------
+Update common-streams to 0.3.0 (#26)
+Loader to start healthy if no privilege to create tables but table already exists (#29)
+Retry logs should express delays in milliseconds (#28)
+Add config parser specs (#27)
+Separate retry policies for transient errors and setup errors (#24)
+Extend app health with bad sink (#19)
+Bump snappy-java to 1.1.10.4
+Bump reactor-netty-http to 1.0.39
+Bump netty to 4.1.100.Final
+Refactor Channel to allow testing retries (#21)
+Use new badrows serializer checking max record size (#16)
+Split out channel resource management into a generic Coldswap (#20)
+Acquiring channel should not block graceful shutdown
+Separate app name and version in alert payload (#13)
+Implement alerting using webhook (#12)
+Parse events from bytes instead of string (#10)
+Don't crash app for Snowflake failures (#11)
+
 Version 0.1.0 (2023-11-29)
 --------------------------
 Initial release
