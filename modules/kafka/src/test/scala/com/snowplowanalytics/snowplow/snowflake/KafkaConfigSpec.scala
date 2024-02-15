@@ -65,7 +65,10 @@ object KafkaConfigSpec {
       consumerConf = Map(
         "group.id" -> "snowplow-snowflake-loader",
         "allow.auto.create.topics" -> "false",
-        "auto.offset.reset" -> "latest"
+        "auto.offset.reset" -> "latest",
+        "security.protocol" -> "SASL_SSL",
+        "sasl.mechanism" -> "OAUTHBEARER",
+        "sasl.jaas.config" -> "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;"
       )
     ),
     output = Config.Output(
@@ -91,7 +94,10 @@ object KafkaConfigSpec {
           topicName        = "sp-dev-bad",
           bootstrapServers = "localhost:9092",
           producerConf = Map(
-            "client.id" -> "snowplow-snowflake-loader"
+            "client.id" -> "snowplow-snowflake-loader",
+            "security.protocol" -> "SASL_SSL",
+            "sasl.mechanism" -> "OAUTHBEARER",
+            "sasl.jaas.config" -> "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;"
           )
         ),
         maxRecordSize = 1000000
@@ -138,7 +144,10 @@ object KafkaConfigSpec {
         "group.id" -> "snowplow-snowflake-loader",
         "enable.auto.commit" -> "false",
         "allow.auto.create.topics" -> "false",
-        "auto.offset.reset" -> "earliest"
+        "auto.offset.reset" -> "earliest",
+        "security.protocol" -> "SASL_SSL",
+        "sasl.mechanism" -> "OAUTHBEARER",
+        "sasl.jaas.config" -> "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;"
       )
     ),
     output = Config.Output(
@@ -164,7 +173,10 @@ object KafkaConfigSpec {
           topicName        = "sp-dev-bad",
           bootstrapServers = "localhost:9092",
           producerConf = Map(
-            "client.id" -> "snowplow-snowflake-loader"
+            "client.id" -> "snowplow-snowflake-loader",
+            "security.protocol" -> "SASL_SSL",
+            "sasl.mechanism" -> "OAUTHBEARER",
+            "sasl.jaas.config" -> "org.apache.kafka.common.security.oauthbearer.OAuthBearerLoginModule required;"
           )
         ),
         maxRecordSize = 1000000
