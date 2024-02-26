@@ -226,7 +226,7 @@ object Channel {
       SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToOpenSnowflakeChannel(_)) {
         Sync[F].blocking {
           SnowflakeStreamingIngestClientFactory
-            .builder("snowplow") // client name is not important
+            .builder("Snowplow_Streaming")
             .setProperties(channelProperties(config, batchingConfig))
             // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
             .build
