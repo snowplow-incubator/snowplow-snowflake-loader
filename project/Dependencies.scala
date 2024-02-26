@@ -31,6 +31,7 @@ object Dependencies {
     val netty     = "4.1.100.Final" // Version override
     val reactor   = "1.0.39" // Version override
     val snappy    = "1.1.10.4" // Version override
+    val nimbusJwt = "9.37.2" // Version override
 
     // Snowplow
     val streams = "0.4.0"
@@ -59,6 +60,7 @@ object Dependencies {
   val nettyCodecHttp  = "io.netty"                % "netty-codec-http2"    % V.netty
   val reactorNetty    = "io.projectreactor.netty" % "reactor-netty-http"   % V.reactor
   val snappyJava      = "org.xerial.snappy"       % "snappy-java"          % V.snappy
+  val nimbusJoseJwt   = "com.nimbusds"            % "nimbus-jose-jwt"      % V.nimbusJwt
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -98,6 +100,7 @@ object Dependencies {
     nettyCodecHttp,
     reactorNetty,
     snappyJava,
+    nimbusJoseJwt,
     specs2,
     catsEffectSpecs2
   )
