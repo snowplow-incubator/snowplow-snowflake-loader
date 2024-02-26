@@ -91,11 +91,11 @@ jobs:
           tags: ${{ steps.metaDistroless.outputs.tags }}
           push: true
       - name: Build local image, which is needed to run Snyk
-        if: ${{ !contains(github.ref_name, 'rc') }}
+        #if: ${{ !contains(github.ref_name, 'rc') }}
         run: sbt "project ${{ matrix.app }}Distroless" docker:publishLocal
       - name: Run Snyk to check for vulnerabilities
         uses: snyk/actions/docker@master
-        if: ${{ !contains(github.ref_name, 'rc') }}
+        #if: ${{ !contains(github.ref_name, 'rc') }}
         with:
           image: "snowplow/snowflake-loader-${{ matrix.app }}:${{ github.ref_name }}-distroless"
           args: "--app-vulns --org=data-processing-new"
