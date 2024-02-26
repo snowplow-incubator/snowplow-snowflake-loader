@@ -1,3 +1,10 @@
+Version 0.2.1 (2024-02-26)
+--------------------------
+Change the channel’s app name to Snowplow_Streaming (#34)
+Change the Snyk org name (#34)
+Bump nimbus-jose-jwt to 9.37.2 (#34)
+Kafka: authenticate with Event Hubs using OAuth2 (#32)
+
 Version 0.2.0 (2024-01-16)
 --------------------------
 Update common-streams to 0.3.0 (#26)
