@@ -59,8 +59,11 @@ object SnowflakeRetrying {
 
   /** Is an error associated with setting up Snowflake as a destination */
   private def isSetupError[F[_]: Sync](t: Throwable): F[Boolean] = t match {
-    case CausedByIngestResponseException(ire) if ire.getErrorCode === 403 =>
-      true.pure[F]
+    case CausedByIngestResponseException(ire) =>
+      if (ire.getErrorCode >= 400 && ire.getErrorCode < 500)
+        true.pure[F]
+      else
+        false.pure[F]
     case _: SecurityException =>
       // Authentication failure, i.e. user unrecognized or bad private key
       true.pure[F]
