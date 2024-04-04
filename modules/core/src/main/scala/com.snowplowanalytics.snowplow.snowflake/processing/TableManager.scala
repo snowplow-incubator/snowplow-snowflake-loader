@@ -19,6 +19,8 @@ import net.snowflake.client.jdbc.SnowflakeSQLException
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import com.snowplowanalytics.snowplow.loaders.transform.AtomicFields
+
 import scala.util.matching.Regex
 
 trait TableManager[F[_]] {
@@ -50,8 +52,11 @@ object TableManager {
 
         override def addColumns(columns: List[String]): F[Unit] =
           SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToAddColumns(columns, _)) {
-            Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]") *>
-              executeAddColumnsQuery(columns)
+            for {
+              _ <- Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]")
+              addable <- columns.traverse(addableColumn(appHealth, monitoring, _))
+              _ <- executeAddColumnsQuery(addable)
+            } yield ()
           }
 
         def executeInitTableQuery(): F[Unit] = {
@@ -68,31 +73,58 @@ object TableManager {
             }
         }
 
-        def executeAddColumnsQuery(columns: List[String]): F[Unit] =
+        def executeAddColumnsQuery(columns: List[AddableColumn]): F[Unit] =
           transactor.rawTrans.apply {
             columns.traverse_ { column =>
               sqlAlterTable(config, column).update.run.void
                 .recoverWith {
                   case e: SnowflakeSQLException if e.getErrorCode === 1430 =>
-                    Logger[ConnectionIO].info(show"Column already exists: $column")
+                    Logger[ConnectionIO].info(show"Column already exists: ${column.name}")
                 }
             }
           }
       }
     }
 
+  private sealed trait AddableColumn {
+    def name: String
+  }
+  private object AddableColumn {
+    case class UnstructEvent(name: String) extends AddableColumn
+    case class Contexts(name: String) extends AddableColumn
+  }
+
+  private def addableColumn[F[_]: Async](
+    appHealth: AppHealth[F],
+    monitoring: Monitoring[F],
+    name: String
+  ): F[AddableColumn] =
+    name match {
+      case reUnstruct() => Sync[F].pure(AddableColumn.UnstructEvent(name))
+      case reContext()  => Sync[F].pure(AddableColumn.Contexts(name))
+      case other if AtomicFields.withLoadTstamp.exists(_.name === other) =>
+        Logger[F].error(s"Table is missing required field $name. Will do nothing but wait for loader to be killed") *>
+          appHealth.setServiceHealth(AppHealth.Service.Snowflake, false) *>
+          // This is a type of "setup" error, so we send a monitoring alert
+          monitoring.alert(Alert.TableIsMissingAtomicColumn(name)) *>
+          // We don't want to crash and exit, because we don't want to spam Sentry with exceptions about setup errors.
+          // But there's no point in continuing or retrying. Instead we just block the fiber so the health probe appears unhealthy.
+          Async[F].never
+      case other =>
+        Sync[F].raiseError(new IllegalStateException(s"Cannot alter table to add unrecognized column $other"))
+    }
+
   private val reUnstruct: Regex = "^unstruct_event_.*$".r
   private val reContext: Regex  = "^contexts_.*$".r
 
-  private def sqlAlterTable(config: Config.Snowflake, colName: String): Fragment = {
+  private def sqlAlterTable(config: Config.Snowflake, addableColumn: AddableColumn): Fragment = {
     val tableName = fqTableName(config)
-    val colType = colName match {
-      case reUnstruct() => "OBJECT"
-      case reContext()  => "ARRAY"
-      case other        => throw new IllegalStateException(s"Cannot alter table to add column $other")
+    val colType = addableColumn match {
+      case AddableColumn.UnstructEvent(_) => "OBJECT"
+      case AddableColumn.Contexts(_)      => "ARRAY"
     }
     val colTypeFrag = Fragment.const0(colType)
-    val colNameFrag = Fragment.const0(colName)
+    val colNameFrag = Fragment.const0(addableColumn.name)
     sql"""
     ALTER TABLE identifier($tableName)
     ADD COLUMN $colNameFrag $colTypeFrag
