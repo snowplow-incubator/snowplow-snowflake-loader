@@ -1,3 +1,9 @@
+Version 0.2.2 (2024-04-05)
+--------------------------
+Treat all client errors as setup errors when opening channel (#37)
+Missing atomic column should be treated as a setup error (#38)
+Use TIMESTAMP_TZ types when creating the table (#36)
+
 Version 0.2.1 (2024-02-26)
 --------------------------
 Change the channel’s app name to Snowplow_Streaming (#34)
