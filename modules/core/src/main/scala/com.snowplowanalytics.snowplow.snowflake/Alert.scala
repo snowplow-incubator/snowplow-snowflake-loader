@@ -30,6 +30,7 @@ object Alert {
   final case class FailedToAddColumns(columns: List[String], cause: Throwable) extends Alert
   final case class FailedToOpenSnowflakeChannel(cause: Throwable) extends Alert
   final case class FailedToParsePrivateKey(cause: Throwable) extends Alert
+  final case class TableIsMissingAtomicColumn(columnName: String) extends Alert
 
   def toSelfDescribingJson(
     alert: Alert,
@@ -52,25 +53,35 @@ object Alert {
       case FailedToAddColumns(columns, cause)  => show"Failed to add columns: ${columns.mkString("[", ",", "]")}. Cause: $cause"
       case FailedToOpenSnowflakeChannel(cause) => show"Failed to open Snowflake channel: $cause"
       case FailedToParsePrivateKey(cause)      => show"Failed to parse private key: $cause"
+      case TableIsMissingAtomicColumn(colName) => show"Table is missing required column $colName"
     }
 
     full.take(MaxAlertPayloadLength)
   }
 
   private implicit def throwableShow: Show[Throwable] = {
-    def go(acc: List[String], next: Throwable): String = {
-      val nextMessage = next match {
+    def removeDuplicateMessages(in: List[String]): List[String] =
+      in match {
+        case h :: t :: rest =>
+          if (h.contains(t)) removeDuplicateMessages(h :: rest)
+          else if (t.contains(h)) removeDuplicateMessages(t :: rest)
+          else h :: removeDuplicateMessages(t :: rest)
+        case fewer => fewer
+      }
+
+    def accumulateMessages(t: Throwable): List[String] = {
+      val nextMessage = t match {
         case t: SQLException => Some(s"${t.getMessage} = SqlState: ${t.getSQLState}")
         case t               => Option(t.getMessage)
       }
-      val msgs = nextMessage.filterNot(msg => acc.headOption.contains(msg)) ++: acc
-
-      Option(next.getCause) match {
-        case Some(cause) => go(msgs, cause)
-        case None        => msgs.reverse.mkString(": ")
+      Option(t.getCause) match {
+        case Some(cause) => nextMessage.toList ::: accumulateMessages(cause)
+        case None        => nextMessage.toList
       }
     }
 
-    Show.show(go(Nil, _))
+    Show.show { t =>
+      removeDuplicateMessages(accumulateMessages(t)).mkString(": ")
+    }
   }
 }
