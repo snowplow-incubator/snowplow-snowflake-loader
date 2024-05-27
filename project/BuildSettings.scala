@@ -57,7 +57,8 @@ object BuildSettings {
     // used in extended configuration parsing unit tests
     Test / envVars := Map(
       "SNOWFLAKE_PRIVATE_KEY" -> "secretPrivateKey",
-      "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase"
+      "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase",
+      "HOSTNAME" -> "testWorkerId"
     )
   )
 

@@ -64,12 +64,14 @@ object KinesisConfigSpec {
     input = KinesisSourceConfig(
       appName                  = "snowplow-snowflake-loader",
       streamName               = "snowplow-enriched-events",
+      workerIdentifier         = "testWorkerId",
       initialPosition          = KinesisSourceConfig.InitialPosition.Latest,
       retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
       bufferSize               = PosInt.unsafeFrom(1),
       customEndpoint           = None,
       dynamodbCustomEndpoint   = None,
-      cloudwatchCustomEndpoint = None
+      cloudwatchCustomEndpoint = None,
+      leaseDuration            = 10.seconds
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -137,12 +139,14 @@ object KinesisConfigSpec {
     input = KinesisSourceConfig(
       appName                  = "snowplow-snowflake-loader",
       streamName               = "snowplow-enriched-events",
+      workerIdentifier         = "testWorkerId",
       initialPosition          = KinesisSourceConfig.InitialPosition.TrimHorizon,
       retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
       bufferSize               = PosInt.unsafeFrom(1),
       customEndpoint           = None,
       dynamodbCustomEndpoint   = None,
-      cloudwatchCustomEndpoint = None
+      cloudwatchCustomEndpoint = None,
+      leaseDuration            = 10.seconds
     ),
     output = Config.Output(
       good = Config.Snowflake(

@@ -34,7 +34,7 @@ object Dependencies {
     val nimbusJwt = "9.37.2" // Version override
 
     // Snowplow
-    val streams = "0.4.0"
+    val streams = "0.7.0-M3"
 
     // tests
     val specs2           = "4.20.0"
