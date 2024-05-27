@@ -63,7 +63,7 @@ object PubsubConfigSpec {
   private val minimalConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
       subscription               = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullCount          = 1,
+      parallelPullFactor         = 0.5,
       bufferMaxBytes             = 10000000,
       maxAckExtensionPeriod      = 1.hour,
       minDurationPerAckExtension = 1.minute,
@@ -135,7 +135,7 @@ object PubsubConfigSpec {
   private val extendedConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
       subscription               = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullCount          = 3,
+      parallelPullFactor         = 0.5,
       bufferMaxBytes             = 1000000,
       maxAckExtensionPeriod      = 1.hour,
       minDurationPerAckExtension = 1.minute,

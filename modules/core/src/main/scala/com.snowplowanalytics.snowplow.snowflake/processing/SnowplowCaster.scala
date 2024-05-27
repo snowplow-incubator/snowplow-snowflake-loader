@@ -15,6 +15,8 @@ import io.circe.Json
 import java.time.{Instant, LocalDate, OffsetDateTime, ZoneOffset}
 import java.util.{List => JList, Map => JMap}
 
+import cats.data.NonEmptyVector
+
 import com.snowplowanalytics.iglu.schemaddl.parquet.Type
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 
@@ -32,13 +34,14 @@ private[processing] object SnowflakeCaster extends Caster[AnyRef] {
   override def doubleValue(v: Double): java.lang.Double    = Double.box(v)
   override def decimalValue(unscaled: BigInt, details: Type.Decimal): java.math.BigDecimal =
     new java.math.BigDecimal(unscaled.bigInteger, details.scale)
-  override def timestampValue(v: Instant): OffsetDateTime  = OffsetDateTime.ofInstant(v, ZoneOffset.UTC)
-  override def dateValue(v: LocalDate): LocalDate          = v
-  override def arrayValue(vs: List[AnyRef]): JList[AnyRef] = vs.asJava
-  override def structValue(vs: List[Caster.NamedValue[AnyRef]]): JMap[String, AnyRef] =
+  override def timestampValue(v: Instant): OffsetDateTime    = OffsetDateTime.ofInstant(v, ZoneOffset.UTC)
+  override def dateValue(v: LocalDate): LocalDate            = v
+  override def arrayValue(vs: Vector[AnyRef]): JList[AnyRef] = vs.asJava
+  override def structValue(vs: NonEmptyVector[Caster.NamedValue[AnyRef]]): JMap[String, AnyRef] =
     vs.map { case Caster.NamedValue(k, v) =>
       (k, v)
-    }.toMap
+    }.toVector
+      .toMap
       .asJava
 
 }
