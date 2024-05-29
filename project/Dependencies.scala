@@ -27,7 +27,7 @@ object Dependencies {
     val sentry    = "6.25.2"
     val snowflake = "2.0.3"
     val jaxb      = "2.3.1"
-    val awsSdk2   = "2.20.135"
+    val awsSdk2   = "2.25.16"
     val netty     = "4.1.100.Final" // Version override
     val reactor   = "1.0.39" // Version override
     val snappy    = "1.1.10.4" // Version override
