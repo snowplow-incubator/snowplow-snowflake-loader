@@ -11,7 +11,6 @@
 package com.snowplowanalytics.snowplow.snowflake
 
 import cats.Id
-import cats.syntax.either._
 import io.circe.Decoder
 import io.circe.generic.extras.semiauto._
 import io.circe.generic.extras.Configuration
@@ -23,9 +22,8 @@ import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDeco
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
-import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
-import org.http4s.{ParseFailure, Uri}
 
 case class Config[+Source, +Sink](
   input: Source,
@@ -90,17 +88,15 @@ object Config {
     metrics: Metrics,
     sentry: Option[Sentry],
     healthProbe: HealthProbe,
-    webhook: Option[Webhook]
+    webhook: Webhook.Config
   )
-
-  final case class Webhook(endpoint: Uri, tags: Map[String, String])
 
   case class SetupErrorRetries(delay: FiniteDuration)
   case class TransientErrorRetries(delay: FiniteDuration, attempts: Int)
 
   case class Retries(
-    setupErrors: SetupErrorRetries,
-    transientErrors: TransientErrorRetries
+    setupErrors: Retrying.Config.ForSetup,
+    transientErrors: Retrying.Config.ForTransient
   )
 
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
@@ -125,15 +121,9 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val http4sUriDecoder: Decoder[Uri] =
-      Decoder[String].emap(s => Either.catchOnly[ParseFailure](Uri.unsafeFromString(s)).leftMap(_.toString))
-
     implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
-    implicit val webhookDecoder     = deriveConfiguredDecoder[Webhook]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
-    implicit val setupRetries       = deriveConfiguredDecoder[SetupErrorRetries]
-    implicit val transientRetries   = deriveConfiguredDecoder[TransientErrorRetries]
     implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }

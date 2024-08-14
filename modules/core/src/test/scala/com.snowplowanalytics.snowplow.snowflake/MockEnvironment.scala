@@ -12,10 +12,9 @@ package com.snowplowanalytics.snowplow.snowflake
 
 import cats.effect.IO
 import cats.effect.kernel.{Ref, Resource, Unique}
-import com.snowplowanalytics.snowplow.runtime.AppInfo
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo}
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service.{BadSink, Snowflake}
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import fs2.Stream
@@ -26,8 +25,6 @@ import scala.concurrent.duration.{DurationInt, FiniteDuration}
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
 object MockEnvironment {
-
-  private val everythingHealthy: Map[AppHealth.Service, Boolean] = Map(Snowflake -> true, BadSink -> true)
 
   sealed trait Action
   object Action {
@@ -41,6 +38,8 @@ object MockEnvironment {
     case class AddedGoodCountMetric(count: Int) extends Action
     case class AddedBadCountMetric(count: Int) extends Action
     case class SetLatencyMetric(millis: Long) extends Action
+    case class BecameUnhealthy(service: RuntimeService) extends Action
+    case class BecameHealthy(service: RuntimeService) extends Action
   }
   import Action._
 
@@ -50,7 +49,6 @@ object MockEnvironment {
       source = testSourceAndAck(inputs, state)
       channelResource <- Resource.eval(testChannel(mocks.channelResponses, state))
       channelColdswap <- Coldswap.make(channelResource)
-      appHealth <- Resource.eval(AppHealth.init(10.seconds, source, everythingHealthy))
     } yield {
       val env = Environment(
         appInfo      = appInfo,
@@ -60,7 +58,7 @@ object MockEnvironment {
         tableManager = testTableManager(state),
         channel      = channelColdswap,
         metrics      = testMetrics(state),
-        appHealth    = appHealth,
+        appHealth    = testAppHealth(state),
         batching = Config.Batching(
           maxBytes          = 16000000,
           maxDelay          = 10.seconds,
@@ -183,4 +181,16 @@ object MockEnvironment {
 
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }
+
+  private def testAppHealth(ref: Ref[IO, Vector[Action]]): AppHealth.Interface[IO, Alert, RuntimeService] =
+    new AppHealth.Interface[IO, Alert, RuntimeService] {
+      def beHealthyForSetup: IO[Unit] =
+        IO.unit
+      def beUnhealthyForSetup(alert: Alert): IO[Unit] =
+        IO.unit
+      def beHealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameHealthy(service))
+      def beUnhealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+        ref.update(_ :+ BecameUnhealthy(service))
+    }
 }
