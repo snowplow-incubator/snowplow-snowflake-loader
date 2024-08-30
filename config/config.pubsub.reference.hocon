@@ -3,8 +3,9 @@
     # -- pubsub subscription for the source of enriched events
     "subscription": "projects/myproject/subscriptions/snowplow-enriched"
 
-    # -- How many threads are used by the pubsub client library for fetching events
-    "parallelPullCount": 3
+    # -- Controls how many threads are used internally by the pubsub client library for fetching events.
+    # -- The number of threads is equal to this factor multiplied by the number of availble cpu cores
+    "parallelPullFactor": 0.5
 
     # -- How many bytes can be buffered by the loader app before blocking the pubsub client library
     # -- from fetching more events.
@@ -79,7 +80,7 @@
     # - How many batches can we send simultaneously over the network to Snowflake.
     "uploadConcurrency":  1
   }
-  
+
   # Retry configuration for Snowflake operation failures
   "retries": {
 
@@ -96,7 +97,7 @@
       "delay": "1 second"
       "attempts": 5
     }
-  } 
+  }
 
   # -- Schemas that won't be loaded to Snowflake. Optional, default value []
   "skipSchemas": [
@@ -105,7 +106,7 @@
     "iglu:com.acme/skipped3/jsonschema/1-*-*",
     "iglu:com.acme/skipped4/jsonschema/*-*-*"
   ]
-  
+
   "monitoring": {
     "metrics": {
 
@@ -136,8 +137,8 @@
         "myTag": "xyz"
       }
     }
-    
-    # -- Report alerts to the webhook 
+
+    # -- Report alerts and heartbeats to the webhook
     "webhook": {
       # An actual HTTP endpoint
       "endpoint": "https://webhook.acme.com",
@@ -145,7 +146,9 @@
       "tags": {
         "pipeline": "production"
       }
-    }  
+      # How often to send the heartbeat event
+      "heartbeat": "60.minutes"
+    }
   }
 
   # -- Optional, configure telemetry

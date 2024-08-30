@@ -12,8 +12,9 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Poll, Resource, Sync}
 import cats.implicits._
+import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
-import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, RuntimeService}
 import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
 import net.snowflake.ingest.streaming._
 import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
@@ -103,11 +104,10 @@ object Channel {
     config: Config.Snowflake,
     batchingConfig: Config.Batching,
     retriesConfig: Config.Retries,
-    monitoring: Monitoring[F],
-    appHealth: AppHealth[F]
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService]
   ): Resource[F, Opener[F]] =
     for {
-      client <- createClient(config, batchingConfig, retriesConfig, monitoring, appHealth)
+      client <- createClient(config, batchingConfig, retriesConfig, appHealth)
     } yield new Opener[F] {
       def open: F[CloseableChannel[F]] = createChannel[F](config, client).map(impl[F])
     }
@@ -115,21 +115,19 @@ object Channel {
   def provider[F[_]: Async](
     opener: Opener[F],
     retries: Config.Retries,
-    health: AppHealth[F],
-    monitoring: Monitoring[F]
+    health: AppHealth.Interface[F, Alert, RuntimeService]
   ): Resource[F, Provider[F]] =
-    Coldswap.make(openerToResource(opener, retries, health, monitoring))
+    Coldswap.make(openerToResource(opener, retries, health))
 
   private def openerToResource[F[_]: Async](
     opener: Opener[F],
     retries: Config.Retries,
-    health: AppHealth[F],
-    monitoring: Monitoring[F]
+    health: AppHealth.Interface[F, Alert, RuntimeService]
   ): Resource[F, Channel[F]] = {
 
     def make(poll: Poll[F]) = poll {
-      SnowflakeRetrying.withRetries(health, retries, monitoring, Alert.FailedToOpenSnowflakeChannel(_)) {
-        opener.open
+      SnowflakeRetrying.withRetries(health, retries, Alert.FailedToOpenSnowflakeChannel(_)) {
+        opener.open <* health.beHealthyForSetup
       }
     }
 
@@ -191,7 +189,8 @@ object Channel {
       .build
 
     Logger[F].info(s"Opening channel ${config.channel}") *>
-      Async[F].blocking(client.openChannel(request))
+      Async[F].blocking(client.openChannel(request)) <*
+      Logger[F].info(s"Successfully opened channel ${config.channel}")
   }
 
   private def channelProperties(config: Config.Snowflake, batchingConfig: Config.Batching): Properties = {
@@ -219,18 +218,19 @@ object Channel {
     config: Config.Snowflake,
     batchingConfig: Config.Batching,
     retriesConfig: Config.Retries,
-    monitoring: Monitoring[F],
-    appHealth: AppHealth[F]
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService]
   ): Resource[F, SnowflakeStreamingIngestClient] = {
     def make(poll: Poll[F]) = poll {
-      SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToOpenSnowflakeChannel(_)) {
-        Sync[F].blocking {
-          SnowflakeStreamingIngestClientFactory
-            .builder("Snowplow_Streaming")
-            .setProperties(channelProperties(config, batchingConfig))
-            // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
-            .build
-        }
+      SnowflakeRetrying.withRetries(appHealth, retriesConfig, Alert.FailedToConnectToSnowflake(_)) {
+        Logger[F].info(show"Initializing a connection to ${config.url.full}") *>
+          Sync[F].blocking {
+            SnowflakeStreamingIngestClientFactory
+              .builder("Snowplow_Streaming")
+              .setProperties(channelProperties(config, batchingConfig))
+              // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
+              .build
+          } <*
+          Logger[F].info(show"Successfully initialized connection to ${config.url.full}")
       }
     }
     Resource.makeFull(make)(client => Sync[F].blocking(client.close()))
