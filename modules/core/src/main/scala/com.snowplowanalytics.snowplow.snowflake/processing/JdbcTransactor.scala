@@ -20,7 +20,8 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 import java.security.PrivateKey
 import java.util.Properties
 
-import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, SetupExceptionMessages}
+import com.snowplowanalytics.snowplow.snowflake.{Alert, Config}
 
 object JdbcTransactor {
 
@@ -30,18 +31,16 @@ object JdbcTransactor {
 
   def make[F[_]: Async](
     config: Config.Snowflake,
-    monitoring: Monitoring[F],
-    appHealth: AppHealth[F]
+    appHealth: AppHealth.Interface[F, Alert, ?]
   ): F[Transactor[F]] =
     for {
-      privateKey <- parsePrivateKey[F](config, monitoring, appHealth)
+      privateKey <- parsePrivateKey[F](config, appHealth)
       props = jdbcProperties(config, privateKey)
     } yield Transactor.fromDriverManager[F](driver, config.url.jdbc, props, None)
 
   private def parsePrivateKey[F[_]: Async](
     config: Config.Snowflake,
-    monitoring: Monitoring[F],
-    appHealth: AppHealth[F]
+    appHealth: AppHealth.Interface[F, Alert, ?]
   ): F[PrivateKey] =
     Sync[F]
       .delay { // Wrap in Sync because these can raise exceptions
@@ -54,9 +53,8 @@ object JdbcTransactor {
       }
       .onError { e =>
         Logger[F].error(e)("Could not parse the Snowflake private key. Will do nothing but wait for loader to be killed") *>
-          appHealth.setServiceHealth(AppHealth.Service.Snowflake, false) *>
           // This is a type of "setup" error, so we send a monitoring alert
-          monitoring.alert(Alert.FailedToParsePrivateKey(e)) *>
+          appHealth.beUnhealthyForSetup(Alert.FailedToParsePrivateKey(SetupExceptionMessages(List(e.getMessage)))) *>
           // We don't want to crash and exit, because we don't want to spam Sentry with exceptions about setup errors.
           // But there's no point in continuing or retrying. Instead we just block the fiber so the health probe appears unhealthy.
           Async[F].never

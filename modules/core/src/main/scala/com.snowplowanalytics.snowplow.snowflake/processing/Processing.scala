@@ -22,13 +22,14 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.snowflake.{AppHealth, Environment, Metrics}
+import com.snowplowanalytics.snowplow.snowflake.{Environment, Metrics, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.loaders.transform.{BadRowsSerializer, Transform}
@@ -241,7 +242,7 @@ object Processing {
 
     attempt
       .onError { _ =>
-        env.appHealth.setServiceHealth(AppHealth.Service.Snowflake, isHealthy = false)
+        env.appHealth.beUnhealthyForRuntimeService(RuntimeService.Snowflake)
       }
   }
 
@@ -366,7 +367,7 @@ object Processing {
         env.badSink
           .sinkSimple(serialized)
           .onError { _ =>
-            env.appHealth.setServiceHealth(AppHealth.Service.BadSink, isHealthy = false)
+            env.appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)
           }
       } else Applicative[F].unit
     }

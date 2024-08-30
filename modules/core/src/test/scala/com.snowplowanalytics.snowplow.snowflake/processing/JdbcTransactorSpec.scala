@@ -19,8 +19,8 @@ import org.specs2.matcher.MatchResult
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
 
-import com.snowplowanalytics.snowplow.runtime.HealthProbe
-import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, MockEnvironment, Monitoring}
+import com.snowplowanalytics.snowplow.runtime.AppHealth
+import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, RuntimeService}
 
 import scala.concurrent.duration.DurationLong
 
@@ -35,13 +35,12 @@ class JdbcTransactorSpec extends Specification with CatsEffect {
   The JdbcTransactor when given an invalid config should
     Sleep forever instead of providing a transactor ${unhealthy1(badConfigWithEncryptedKey)} ${unhealthy1(badConfigWithMissingPassphrase)}
     Send a monitoring alert ${unhealthy2(badConfigWithEncryptedKey)} ${unhealthy2(badConfigWithMissingPassphrase)}
-    Change app health from unhealthy to healthy ${unhealthy3(badConfigWithEncryptedKey)} ${unhealthy3(badConfigWithEncryptedKey)}
   """
 
-  def healthy1(config: Config.Snowflake) = MockEnvironment.build(Nil, MockEnvironment.Mocks.default).use { c =>
+  def healthy1(config: Config.Snowflake) = {
     val io = for {
-      monitoring <- testMonitoring
-      result <- JdbcTransactor.make(config, monitoring, c.environment.appHealth)
+      appHealth <- testAppHealth
+      result <- JdbcTransactor.make(config, appHealth)
     } yield result
 
     afterOneDay(io) { case Some(Outcome.Succeeded(_: Transactor[IO])) =>
@@ -49,22 +48,22 @@ class JdbcTransactorSpec extends Specification with CatsEffect {
     }
   }
 
-  def healthy2(config: Config.Snowflake) = MockEnvironment.build(Nil, MockEnvironment.Mocks.default).use { c =>
+  def healthy2(config: Config.Snowflake) = {
     val io = for {
-      monitoring <- testMonitoring
-      _ <- JdbcTransactor.make(config, monitoring, c.environment.appHealth)
-      alerts <- monitoring.ref.get
-    } yield alerts
+      appHealth <- testAppHealth
+      _ <- JdbcTransactor.make(config, appHealth)
+      actions <- appHealth.ref.get
+    } yield actions
 
     afterOneDay(io) { case Some(Outcome.Succeeded(alerts)) =>
       alerts must beEmpty
     }
   }
 
-  def unhealthy1(config: Config.Snowflake) = MockEnvironment.build(Nil, MockEnvironment.Mocks.default).use { c =>
+  def unhealthy1(config: Config.Snowflake) = {
     val io = for {
-      monitoring <- testMonitoring
-      _ <- JdbcTransactor.make(config, monitoring, c.environment.appHealth)
+      appHealth <- testAppHealth
+      _ <- JdbcTransactor.make(config, appHealth)
     } yield ()
 
     afterOneDay(io) { case None =>
@@ -72,33 +71,16 @@ class JdbcTransactorSpec extends Specification with CatsEffect {
     }
   }
 
-  def unhealthy2(config: Config.Snowflake) = MockEnvironment.build(Nil, MockEnvironment.Mocks.default).use { c =>
+  def unhealthy2(config: Config.Snowflake) = {
     val io = for {
-      monitoring <- testMonitoring
-      _ <- JdbcTransactor.make(config, monitoring, c.environment.appHealth).start
+      appHealth <- testAppHealth
+      _ <- JdbcTransactor.make(config, appHealth).start
       _ <- IO.sleep(6.hours)
-      alerts <- monitoring.ref.get
-    } yield alerts
+      actions <- appHealth.ref.get
+    } yield actions
 
-    afterOneDay(io) { case Some(Outcome.Succeeded(alerts)) =>
-      alerts must beLike { case Vector(Alert.FailedToParsePrivateKey(_)) =>
-        ok
-      }
-    }
-  }
-
-  def unhealthy3(config: Config.Snowflake) = MockEnvironment.build(Nil, MockEnvironment.Mocks.default).use { c =>
-    val io = for {
-      monitoring <- testMonitoring
-      _ <- c.environment.appHealth.setServiceHealth(AppHealth.Service.Snowflake, true)
-      healthBeforeTest <- c.environment.appHealth.status()
-      _ <- JdbcTransactor.make(config, monitoring, c.environment.appHealth).start
-      _ <- IO.sleep(6.hours)
-      healthAfterTest <- c.environment.appHealth.status()
-    } yield (healthBeforeTest, healthAfterTest)
-
-    afterOneDay(io) { case Some(Outcome.Succeeded((healthBeforeTest, healthAfterTest))) =>
-      (healthBeforeTest, healthAfterTest) must beLike { case (HealthProbe.Healthy, HealthProbe.Unhealthy(_)) =>
+    afterOneDay(io) { case Some(Outcome.Succeeded(actions)) =>
+      actions must beLike { case Vector(Action.BecameUnhealthyForSetup(Alert.FailedToParsePrivateKey(_))) =>
         ok
       }
     }
@@ -197,13 +179,27 @@ object JdbcTransactorSpec {
   val badConfigWithEncryptedKey  = goodConfigWithEncryptedKey.copy(privateKeyPassphrase = Some("nonsese"))
   val badConfigWithMissingPassphrase = goodConfigWithEncryptedKey.copy(privateKeyPassphrase = None)
 
-  class TestMonitoring(val ref: Ref[IO, Vector[Alert]]) extends Monitoring[IO] {
-    override def alert(message: Alert): IO[Unit] =
-      ref.update(_ :+ message)
+  sealed trait Action
+  object Action {
+    case object BecameUnhealthy extends Action
+    case object BecameHealthy extends Action
+    case object BecameHealthyForSetup extends Action
+    case class BecameUnhealthyForSetup(alert: Alert) extends Action
   }
 
-  def testMonitoring: IO[TestMonitoring] =
+  class TestAppHealth(val ref: Ref[IO, Vector[Action]]) extends AppHealth.Interface[IO, Alert, RuntimeService] {
+    def beHealthyForSetup: IO[Unit] =
+      ref.update(_ :+ Action.BecameHealthyForSetup)
+    def beUnhealthyForSetup(alert: Alert): IO[Unit] =
+      ref.update(_ :+ Action.BecameUnhealthyForSetup(alert))
+    def beHealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+      ref.update(_ :+ Action.BecameHealthy)
+    def beUnhealthyForRuntimeService(service: RuntimeService): IO[Unit] =
+      ref.update(_ :+ Action.BecameUnhealthy)
+  }
+
+  def testAppHealth: IO[TestAppHealth] =
     for {
-      ref <- Ref[IO].of(Vector.empty[Alert])
-    } yield new TestMonitoring(ref)
+      ref <- Ref[IO].of(Vector.empty[Action])
+    } yield new TestAppHealth(ref)
 }

@@ -12,14 +12,15 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.{Async, Sync}
 import cats.implicits._
-import com.snowplowanalytics.snowplow.snowflake.{Alert, AppHealth, Config, Monitoring}
 import doobie.implicits._
 import doobie.{ConnectionIO, Fragment}
 import net.snowflake.client.jdbc.SnowflakeSQLException
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, RuntimeService}
 import com.snowplowanalytics.snowplow.loaders.transform.AtomicFields
+import com.snowplowanalytics.snowplow.runtime.AppHealth
 
 import scala.util.matching.Regex
 
@@ -37,54 +38,57 @@ object TableManager {
 
   def make[F[_]: Async](
     config: Config.Snowflake,
-    appHealth: AppHealth[F],
-    retriesConfig: Config.Retries,
-    monitoring: Monitoring[F]
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService],
+    retriesConfig: Config.Retries
   ): F[TableManager[F]] =
-    JdbcTransactor.make(config, monitoring, appHealth).map { transactor =>
+    JdbcTransactor.make(config, appHealth).map { transactor =>
       new TableManager[F] {
 
         override def initializeEventsTable(): F[Unit] =
-          SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToCreateEventsTable(_)) {
-            Logger[F].info(s"Opening JDBC connection to ${config.url.jdbc}") *>
-              executeInitTableQuery()
-          }
+          SnowflakeRetrying
+            .withRetries(appHealth, retriesConfig, Alert.FailedToShowTables(config.database, config.schema, _)) {
+              Logger[F].info(s"Opening JDBC connection to ${config.url.jdbc}") *>
+                transactor.rawTrans.apply(tableExists(config))
+            }
+            .flatMap {
+              case true =>
+                // Table already exists
+                Logger[F].info("Confirmed that target table already exists")
+              case false =>
+                // Table does not exist
+                Logger[F].info("Target table does not already exist.  Trying to create table...") *>
+                  SnowflakeRetrying
+                    .withRetries(appHealth, retriesConfig, Alert.FailedToCreateEventsTable(config.database, config.schema, _)) {
+                      transactor.rawTrans.apply(executeInitTableQuery(config))
+                    }
+            }
 
         override def addColumns(columns: List[String]): F[Unit] =
-          SnowflakeRetrying.withRetries(appHealth, retriesConfig, monitoring, Alert.FailedToAddColumns(columns, _)) {
+          SnowflakeRetrying.withRetries(appHealth, retriesConfig, Alert.FailedToAddColumns(columns, _)) {
             for {
               _ <- Logger[F].info(s"Altering table to add columns [${columns.mkString(", ")}]")
-              addable <- columns.traverse(addableColumn(appHealth, monitoring, _))
-              _ <- executeAddColumnsQuery(addable)
+              addable <- columns.traverse(addableColumn(appHealth, _))
+              _ <- transactor.rawTrans.apply(executeAddColumnsQuery(config, addable))
             } yield ()
-          }
-
-        def executeInitTableQuery(): F[Unit] = {
-          val tableName = fqTableName(config)
-
-          transactor.rawTrans
-            .apply {
-              Logger[ConnectionIO].info(s"Creating table $tableName if it does not already exist...") *>
-                sqlCreateTable(tableName).update.run.void
-            }
-            .recoverWith {
-              case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
-                Logger[F].info(s"Access denied when trying to create table. Will ignore error and assume table already exists.")
-            }
-        }
-
-        def executeAddColumnsQuery(columns: List[AddableColumn]): F[Unit] =
-          transactor.rawTrans.apply {
-            columns.traverse_ { column =>
-              sqlAlterTable(config, column).update.run.void
-                .recoverWith {
-                  case e: SnowflakeSQLException if e.getErrorCode === 1430 =>
-                    Logger[ConnectionIO].info(show"Column already exists: ${column.name}")
-                }
-            }
           }
       }
     }
+
+  private def executeInitTableQuery(config: Config.Snowflake): ConnectionIO[Unit] =
+    sqlCreateTable(fqTableName(config)).update.run.void
+
+  private def executeAddColumnsQuery(config: Config.Snowflake, columns: List[AddableColumn]): ConnectionIO[Unit] =
+    columns.traverse_ { column =>
+      sqlAlterTable(config, column).update.run.void
+        .recoverWith {
+          case e: SnowflakeSQLException if e.getErrorCode === 1430 =>
+            Logger[ConnectionIO].info(show"Column already exists: ${column.name}")
+        }
+    }
+
+  private def tableExists(config: Config.Snowflake): ConnectionIO[Boolean] =
+    Logger[ConnectionIO].info(s"Checking that table ${config.table} exists in ${config.database}.${config.schema}...") *>
+      sqlShowTable(config).query.option.map(_.isDefined)
 
   private sealed trait AddableColumn {
     def name: String
@@ -95,8 +99,7 @@ object TableManager {
   }
 
   private def addableColumn[F[_]: Async](
-    appHealth: AppHealth[F],
-    monitoring: Monitoring[F],
+    appHealth: AppHealth.Interface[F, Alert, ?],
     name: String
   ): F[AddableColumn] =
     name match {
@@ -104,9 +107,8 @@ object TableManager {
       case reContext()  => Sync[F].pure(AddableColumn.Contexts(name))
       case other if AtomicFields.withLoadTstamp.exists(_.name === other) =>
         Logger[F].error(s"Table is missing required field $name. Will do nothing but wait for loader to be killed") *>
-          appHealth.setServiceHealth(AppHealth.Service.Snowflake, false) *>
           // This is a type of "setup" error, so we send a monitoring alert
-          monitoring.alert(Alert.TableIsMissingAtomicColumn(name)) *>
+          appHealth.beUnhealthyForSetup(Alert.TableIsMissingAtomicColumn(name)) *>
           // We don't want to crash and exit, because we don't want to spam Sentry with exceptions about setup errors.
           // But there's no point in continuing or retrying. Instead we just block the fiber so the health probe appears unhealthy.
           Async[F].never
@@ -131,9 +133,23 @@ object TableManager {
     """
   }
 
-  // fully qualified name
-  private def fqTableName(config: Config.Snowflake): String =
-    s"${config.database}.${config.schema}.${config.table}"
+  private def sqlShowTable(config: Config.Snowflake): Fragment = {
+    val schemaName = fqSchemaName(config)
+    sql"""
+    SHOW TABLES LIKE ${config.table}
+    IN SCHEMA identifier($schemaName)
+    """
+  }
+
+  // fully qualified schema
+  private def fqSchemaName(config: Config.Snowflake): String =
+    s"${config.database}.${config.schema}"
+
+  // fully qualified table
+  private def fqTableName(config: Config.Snowflake): String = {
+    val schema = fqSchemaName(config)
+    s"$schema.${config.table}"
+  }
 
   private def sqlCreateTable(tableName: String): Fragment =
     sql"""

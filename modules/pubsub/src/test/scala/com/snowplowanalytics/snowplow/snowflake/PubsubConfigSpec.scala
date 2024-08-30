@@ -17,7 +17,7 @@ import com.comcast.ip4s.Port
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.pubsub.GcpUserAgent
 import com.snowplowanalytics.snowplow.runtime.Metrics.StatsdConfig
-import com.snowplowanalytics.snowplow.runtime.{ConfigParser, Telemetry}
+import com.snowplowanalytics.snowplow.runtime.{ConfigParser, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.sinks.pubsub.PubsubSinkConfig
 import com.snowplowanalytics.snowplow.snowflake.Config.Snowflake
 import com.snowplowanalytics.snowplow.sources.pubsub.PubsubSourceConfig
@@ -30,7 +30,7 @@ import scala.concurrent.duration.DurationInt
 class PubsubConfigSpec extends Specification with CatsEffect {
 
   def is = s2"""
-   Config parse should be able to parse 
+   Config parse should be able to parse
     minimal pubsub config $minimal
     extended pubsub config $extended
   """
@@ -105,8 +105,8 @@ object PubsubConfigSpec {
       uploadConcurrency = 3
     ),
     retries = Config.Retries(
-      setupErrors     = Config.SetupErrorRetries(delay = 30.seconds),
-      transientErrors = Config.TransientErrorRetries(delay = 1.second, attempts = 5)
+      setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
+      transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
     ),
     skipSchemas = List.empty,
     telemetry = Telemetry.Config(
@@ -125,7 +125,7 @@ object PubsubConfigSpec {
       metrics     = Config.Metrics(None),
       sentry      = None,
       healthProbe = Config.HealthProbe(port = Port.fromInt(8000).get, unhealthyLatency = 5.minutes),
-      webhook     = None
+      webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 60.minutes)
     )
   )
 
@@ -177,8 +177,8 @@ object PubsubConfigSpec {
       uploadConcurrency = 1
     ),
     retries = Config.Retries(
-      setupErrors     = Config.SetupErrorRetries(delay = 30.seconds),
-      transientErrors = Config.TransientErrorRetries(delay = 1.second, attempts = 5)
+      setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
+      transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
     ),
     skipSchemas = List(
       SchemaCriterion.parse("iglu:com.acme/skipped1/jsonschema/1-0-0").get,
@@ -215,7 +215,8 @@ object PubsubConfigSpec {
         port             = Port.fromInt(8000).get,
         unhealthyLatency = 5.minutes
       ),
-      webhook = Some(Config.Webhook(endpoint = uri"https://webhook.acme.com", tags = Map("pipeline" -> "production")))
+      webhook =
+        Webhook.Config(endpoint = Some(uri"https://webhook.acme.com"), tags = Map("pipeline" -> "production"), heartbeat = 60.minutes)
     )
   )
 }

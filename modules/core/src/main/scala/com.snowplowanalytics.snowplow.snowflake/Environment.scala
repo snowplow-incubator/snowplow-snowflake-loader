@@ -10,12 +10,12 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
+import cats.implicits._
 import cats.effect.unsafe.implicits.global
 import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.{AppInfo, HealthProbe}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, Webhook}
 import com.snowplowanalytics.snowplow.sinks.Sink
-import com.snowplowanalytics.snowplow.snowflake.AppHealth.Service
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import org.http4s.blaze.client.BlazeClientBuilder
@@ -29,18 +29,13 @@ case class Environment[F[_]](
   tableManager: TableManager[F],
   channel: Channel.Provider[F],
   metrics: Metrics[F],
-  appHealth: AppHealth[F],
+  appHealth: AppHealth.Interface[F, Alert, RuntimeService],
   batching: Config.Batching,
   schemasToSkip: List[SchemaCriterion],
   badRowMaxSize: Int
 )
 
 object Environment {
-
-  private val initialAppHealth: Map[Service, Boolean] = Map(
-    Service.Snowflake -> false,
-    Service.BadSink -> true
-  )
 
   def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     config: Config[SourceConfig, SinkConfig],
@@ -51,18 +46,16 @@ object Environment {
     for {
       _ <- Sentry.capturingAnyException(appInfo, config.monitoring.sentry)
       sourceAndAck <- Resource.eval(toSource(config.input))
-      appHealth <- Resource.eval(AppHealth.init(config.monitoring.healthProbe.unhealthyLatency, sourceAndAck, initialAppHealth))
-      _ <- HealthProbe.resource(
-             config.monitoring.healthProbe.port,
-             appHealth.status()
-           )
+      sourceReporter = sourceAndAck.isHealthy(config.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
+      appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
       httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
-      monitoring <- Monitoring.create[F](config.monitoring.webhook, appInfo, httpClient)
-      badSink <- toSink(config.output.bad.sink)
+      _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth)
+      _ <- Webhook.resource(config.monitoring.webhook, appInfo, httpClient, appHealth)
+      badSink <- toSink(config.output.bad.sink).onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
-      tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries, monitoring))
-      channelOpener <- Channel.opener(config.output.good, config.batching, config.retries, monitoring, appHealth)
-      channelProvider <- Channel.provider(channelOpener, config.retries, appHealth, monitoring)
+      tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries))
+      channelOpener <- Channel.opener(config.output.good, config.batching, config.retries, appHealth)
+      channelProvider <- Channel.provider(channelOpener, config.retries, appHealth)
     } yield Environment(
       appInfo       = appInfo,
       source        = sourceAndAck,
