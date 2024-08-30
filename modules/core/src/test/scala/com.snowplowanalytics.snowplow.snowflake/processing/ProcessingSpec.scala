@@ -14,8 +14,7 @@ import cats.effect.IO
 import cats.effect.testing.specs2.CatsEffect
 import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
-import com.snowplowanalytics.snowplow.runtime.HealthProbe
-import com.snowplowanalytics.snowplow.snowflake.MockEnvironment
+import com.snowplowanalytics.snowplow.snowflake.{MockEnvironment, RuntimeService}
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.{Action, Mocks, Response}
 import com.snowplowanalytics.snowplow.sources.TokenedEvents
 import fs2.{Chunk, Stream}
@@ -193,7 +192,8 @@ class ProcessingSpec extends Specification with CatsEffect {
         Vector(
           Action.InitEventsTable,
           Action.OpenedChannel,
-          Action.WroteRowsToSnowflake(1)
+          Action.WroteRowsToSnowflake(1),
+          Action.BecameUnhealthy(RuntimeService.Snowflake)
         )
       )
     }
@@ -267,8 +267,14 @@ class ProcessingSpec extends Specification with CatsEffect {
     runTest(inputEvents(count = 1, badlyFormatted), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.voidError
-        healthStatus <- control.environment.appHealth.status()
-      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Bad sink is not healthy"))
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.BecameUnhealthy(RuntimeService.BadSink)
+        )
+      )
     }
   }
 
@@ -280,8 +286,14 @@ class ProcessingSpec extends Specification with CatsEffect {
     runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.voidError
-        healthStatus <- control.environment.appHealth.status()
-      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Snowflake is not healthy"))
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.BecameUnhealthy(RuntimeService.Snowflake)
+        )
+      )
     }
   }
 
@@ -301,8 +313,15 @@ class ProcessingSpec extends Specification with CatsEffect {
     runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.voidError
-        healthStatus <- control.environment.appHealth.status()
-      } yield healthStatus should beEqualTo(HealthProbe.Unhealthy("Snowflake is not healthy"))
+        state <- control.state.get
+      } yield state should beEqualTo(
+        Vector(
+          Action.InitEventsTable,
+          Action.OpenedChannel,
+          Action.WroteRowsToSnowflake(1),
+          Action.BecameUnhealthy(RuntimeService.Snowflake)
+        )
+      )
     }
   }
 

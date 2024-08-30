@@ -10,78 +10,39 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
+import cats.implicits._
 import cats.Show
 import cats.implicits.showInterpolator
-import com.snowplowanalytics.iglu.core.circe.implicits.igluNormalizeDataJson
-import com.snowplowanalytics.iglu.core.{SchemaKey, SchemaVer, SelfDescribingData}
-import com.snowplowanalytics.snowplow.runtime.AppInfo
-import io.circe.Json
-import io.circe.syntax.EncoderOps
 
-import java.sql.SQLException
+import com.snowplowanalytics.snowplow.runtime.SetupExceptionMessages
 
 sealed trait Alert
 object Alert {
 
-  /** Restrict the length of an alert message to be compliant with alert iglu schema */
-  private val MaxAlertPayloadLength = 4096
-
-  final case class FailedToCreateEventsTable(cause: Throwable) extends Alert
-  final case class FailedToAddColumns(columns: List[String], cause: Throwable) extends Alert
-  final case class FailedToOpenSnowflakeChannel(cause: Throwable) extends Alert
-  final case class FailedToParsePrivateKey(cause: Throwable) extends Alert
+  final case class FailedToConnectToSnowflake(cause: SetupExceptionMessages) extends Alert
+  final case class FailedToShowTables(
+    database: String,
+    schema: String,
+    cause: SetupExceptionMessages
+  ) extends Alert
+  final case class FailedToCreateEventsTable(
+    database: String,
+    schema: String,
+    cause: SetupExceptionMessages
+  ) extends Alert
+  final case class FailedToAddColumns(columns: List[String], cause: SetupExceptionMessages) extends Alert
+  final case class FailedToOpenSnowflakeChannel(cause: SetupExceptionMessages) extends Alert
+  final case class FailedToParsePrivateKey(cause: SetupExceptionMessages) extends Alert
   final case class TableIsMissingAtomicColumn(columnName: String) extends Alert
 
-  def toSelfDescribingJson(
-    alert: Alert,
-    appInfo: AppInfo,
-    tags: Map[String, String]
-  ): Json =
-    SelfDescribingData(
-      schema = SchemaKey("com.snowplowanalytics.monitoring.loader", "alert", "jsonschema", SchemaVer.Full(1, 0, 0)),
-      data = Json.obj(
-        "appName" -> appInfo.name.asJson,
-        "appVersion" -> appInfo.version.asJson,
-        "message" -> getMessage(alert).asJson,
-        "tags" -> tags.asJson
-      )
-    ).normalize
-
-  private def getMessage(alert: Alert): String = {
-    val full = alert match {
-      case FailedToCreateEventsTable(cause)    => show"Failed to create events table: $cause"
-      case FailedToAddColumns(columns, cause)  => show"Failed to add columns: ${columns.mkString("[", ",", "]")}. Cause: $cause"
-      case FailedToOpenSnowflakeChannel(cause) => show"Failed to open Snowflake channel: $cause"
-      case FailedToParsePrivateKey(cause)      => show"Failed to parse private key: $cause"
-      case TableIsMissingAtomicColumn(colName) => show"Table is missing required column $colName"
-    }
-
-    full.take(MaxAlertPayloadLength)
+  implicit def showAlert: Show[Alert] = Show {
+    case FailedToConnectToSnowflake(cause)            => show"Failed to connect to Snowflake: $cause"
+    case FailedToShowTables(db, schema, cause)        => show"Failed to SHOW tables in Snowflake schema $db.$schema: $cause"
+    case FailedToCreateEventsTable(db, schema, cause) => show"Failed to create table in schema $db.$schema: $cause"
+    case FailedToAddColumns(columns, cause)           => show"Failed to add columns: ${columns.mkString("[", ",", "]")}. Cause: $cause"
+    case FailedToOpenSnowflakeChannel(cause)          => show"Failed to open Snowflake channel: $cause"
+    case FailedToParsePrivateKey(cause)               => show"Failed to parse private key: $cause"
+    case TableIsMissingAtomicColumn(colName) => show"Existing table is incompatible with Snowplow: Missing required column $colName"
   }
 
-  private implicit def throwableShow: Show[Throwable] = {
-    def removeDuplicateMessages(in: List[String]): List[String] =
-      in match {
-        case h :: t :: rest =>
-          if (h.contains(t)) removeDuplicateMessages(h :: rest)
-          else if (t.contains(h)) removeDuplicateMessages(t :: rest)
-          else h :: removeDuplicateMessages(t :: rest)
-        case fewer => fewer
-      }
-
-    def accumulateMessages(t: Throwable): List[String] = {
-      val nextMessage = t match {
-        case t: SQLException => Some(s"${t.getMessage} = SqlState: ${t.getSQLState}")
-        case t               => Option(t.getMessage)
-      }
-      Option(t.getCause) match {
-        case Some(cause) => nextMessage.toList ::: accumulateMessages(cause)
-        case None        => nextMessage.toList
-      }
-    }
-
-    Show.show { t =>
-      removeDuplicateMessages(accumulateMessages(t)).mkString(": ")
-    }
-  }
 }
