@@ -203,8 +203,10 @@ object Channel {
     props.setProperty(ParameterProvider.ENABLE_SNOWPIPE_STREAMING_METRICS, "false")
 
     // Disable SDK's background flushing because we manage it ourselves
-    props.setProperty(ParameterProvider.BUFFER_FLUSH_INTERVAL_IN_MILLIS, Long.MaxValue.toString)
     props.setProperty(ParameterProvider.BUFFER_FLUSH_CHECK_INTERVAL_IN_MILLIS, Long.MaxValue.toString)
+    // Max allowed value for MAX_CLIENT_LAG is 10 min. However, background flushing is disabled with above
+    // line. Therefore, it isn't very important what value we use in here.
+    props.setProperty(ParameterProvider.MAX_CLIENT_LAG, "600000")
     props.setProperty(ParameterProvider.INSERT_THROTTLE_INTERVAL_IN_MILLIS, "0")
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_PERCENTAGE, "0")
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_BYTES, "0")
