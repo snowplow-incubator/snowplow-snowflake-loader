@@ -32,6 +32,8 @@ object Dependencies {
     val reactor   = "1.0.39" // Version override
     val snappy    = "1.1.10.4" // Version override
     val nimbusJwt = "9.37.2" // Version override
+    val jackson   = "2.15.0" // Version override
+    val protobuf  = "3.25.5" // Version override
 
     // Snowplow
     val streams = "0.7.0"
@@ -51,16 +53,19 @@ object Dependencies {
   val doobie            = "org.tpolecat"     %% "doobie-core"          % V.doobie
 
   // java
-  val slf4j           = "org.slf4j"               % "slf4j-simple"         % V.slf4j
-  val azureIdentity   = "com.azure"               % "azure-identity"       % V.azureSdk
-  val sentry          = "io.sentry"               % "sentry"               % V.sentry
-  val snowflakeIngest = "net.snowflake"           % "snowflake-ingest-sdk" % V.snowflake
-  val jaxb            = "javax.xml.bind"          % "jaxb-api"             % V.jaxb
-  val stsSdk2         = "software.amazon.awssdk"  % "sts"                  % V.awsSdk2
-  val nettyCodecHttp  = "io.netty"                % "netty-codec-http2"    % V.netty
-  val reactorNetty    = "io.projectreactor.netty" % "reactor-netty-http"   % V.reactor
-  val snappyJava      = "org.xerial.snappy"       % "snappy-java"          % V.snappy
-  val nimbusJoseJwt   = "com.nimbusds"            % "nimbus-jose-jwt"      % V.nimbusJwt
+  val slf4j           = "org.slf4j"                  % "slf4j-simple"         % V.slf4j
+  val azureIdentity   = "com.azure"                  % "azure-identity"       % V.azureSdk
+  val sentry          = "io.sentry"                  % "sentry"               % V.sentry
+  val snowflakeIngest = "net.snowflake"              % "snowflake-ingest-sdk" % V.snowflake
+  val jaxb            = "javax.xml.bind"             % "jaxb-api"             % V.jaxb
+  val stsSdk2         = "software.amazon.awssdk"     % "sts"                  % V.awsSdk2
+  val nettyCodecHttp  = "io.netty"                   % "netty-codec-http2"    % V.netty
+  val reactorNetty    = "io.projectreactor.netty"    % "reactor-netty-http"   % V.reactor
+  val snappyJava      = "org.xerial.snappy"          % "snappy-java"          % V.snappy
+  val nimbusJoseJwt   = "com.nimbusds"               % "nimbus-jose-jwt"      % V.nimbusJwt
+  val jacksonCore     = "com.fasterxml.jackson.core" % "jackson-core"         % V.jackson
+  val protobufJava    = "com.google.protobuf"        % "protobuf-java"        % V.protobuf
+  val protobufUtil    = "com.google.protobuf"        % "protobuf-java-util"   % V.protobuf
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -86,6 +91,7 @@ object Dependencies {
     snowflakeIngest,
     doobie,
     circeGenericExtra,
+    jacksonCore,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
@@ -107,6 +113,8 @@ object Dependencies {
 
   val pubsubDependencies = Seq(
     pubsub,
+    protobufJava,
+    protobufUtil,
     jaxb  % Runtime,
     slf4j % Runtime,
     specs2,
@@ -115,6 +123,7 @@ object Dependencies {
 
   val kinesisDependencies = Seq(
     kinesis,
+    protobufJava,
     jaxb    % Runtime,
     slf4j   % Runtime,
     stsSdk2 % Runtime,
