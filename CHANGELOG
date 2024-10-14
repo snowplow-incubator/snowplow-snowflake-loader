@@ -1,3 +1,9 @@
+Version 0.2.4 (2024-10-14)
+--------------------------
+Bump snowflake-ingest-sdk to 2.2.2 (#47)
+Add sbt installation step to CI (#47)
+Upgrade dependencies to fix some vulnerabilities (#49)
+
 Version 0.2.3 (2024-06-12)
 --------------------------
 Bump aws-sdk-2 to 2.25.16 (#40)
