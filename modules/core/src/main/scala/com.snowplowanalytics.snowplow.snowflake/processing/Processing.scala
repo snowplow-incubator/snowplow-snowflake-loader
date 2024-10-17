@@ -21,8 +21,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
-import java.time.OffsetDateTime
-
+import java.time.{Instant, OffsetDateTime}
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
@@ -86,7 +85,9 @@ object Processing {
     origBatchBytes: Long,
     origBatchCount: Int,
     badAccumulated: ListOfList[BadRow],
-    tokens: Vector[Unique.Token]
+    tokens: Vector[Unique.Token],
+    maxCollectorTstamp: Option[Instant],
+    minCollectorTstamp: Option[Instant]
   )
 
   /**
@@ -129,12 +130,15 @@ object Processing {
 
     in.through(setLatency(env.metrics))
       .through(parseBytes(badProcessor))
+      .through(addOutstandingBatchToMetrics(env.metrics))
       .through(transform(badProcessor, env.schemasToSkip))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
+      .through(setCollectorToTargetLatencyMetrics(env.metrics))
       .through(sendFailedEvents(env, badProcessor))
       .through(sendMetrics(env))
       .through(emitTokens)
+      .through(clearOutstandingBatchFromMetrics(env.metrics))
   }
 
   private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
@@ -150,6 +154,19 @@ object Processing {
           Applicative[F].unit
       }
     }
+
+  private def addOutstandingBatchToMetrics[F[_]: Sync](metrics: Metrics[F]): Pipe[F, ParsedBatch, ParsedBatch] =
+    _.evalTap { parsedBatch =>
+      parsedBatch.events.map(_.collector_tstamp).maxOption match {
+        case Some(maxCollectorTstamp) =>
+          metrics.addOutstandingBatch(parsedBatch.token, maxCollectorTstamp)
+        case None =>
+          Sync[F].unit
+      }
+    }
+
+  private def clearOutstandingBatchFromMetrics[F[_]: Sync](metrics: Metrics[F]): Pipe[F, Unique.Token, Unique.Token] =
+    _.evalTapChunk(metrics.clearOutstandingBatch(_))
 
   /** Parse raw bytes into Event using analytics sdk */
   private def parseBytes[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
@@ -245,6 +262,21 @@ object Processing {
         env.appHealth.beUnhealthyForRuntimeService(RuntimeService.Snowflake)
       }
   }
+
+  private def setCollectorToTargetLatencyMetrics[F[_]: Sync](metrics: Metrics[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+    _.evalTap { batch =>
+      (batch.maxCollectorTstamp, batch.minCollectorTstamp)
+        .mapN { (maxCT, minCT) =>
+          for {
+            now <- Sync[F].realTime
+            optimistic  = now.toMillis - maxCT.toEpochMilli
+            pessimistic = now.toMillis - minCT.toEpochMilli
+            _ <- metrics.setLatencyCollectorToTargetMillis(optimistic)
+            _ <- metrics.setLatencyCollectorToTargetPessimisticMillis(pessimistic)
+          } yield ()
+        }
+        .fold(Sync[F].unit)(identity)
+    }
 
   /**
    * First attempt to write events with the Snowflake SDK
@@ -385,15 +417,25 @@ object Processing {
 
   private def fastGetByIndex[A](items: IndexedSeq[A], index: Long): A = items(index.toInt)
 
+  private implicit class MaxCollectorTstamp(events: List[EventWithTransform]) {
+    def maxCollectorTstamp(): Option[Instant] = events.map(_._1).map(_.collector_tstamp).maxOption
+  }
+
+  private implicit class MinCollectorTstamp(events: List[EventWithTransform]) {
+    def minCollectorTstamp(): Option[Instant] = events.map(_._1).map(_.collector_tstamp).minOption
+  }
+
   private implicit def batchable: BatchUp.Batchable[TransformedBatch, BatchAfterTransform] =
     new BatchUp.Batchable[TransformedBatch, BatchAfterTransform] {
       def combine(b: BatchAfterTransform, a: TransformedBatch): BatchAfterTransform =
         BatchAfterTransform(
-          toBeInserted   = b.toBeInserted.prepend(a.events),
-          origBatchBytes = b.origBatchBytes + a.countBytes,
-          origBatchCount = b.origBatchCount + a.countItems,
-          badAccumulated = b.badAccumulated.prepend(a.parseFailures).prepend(a.transformFailures),
-          tokens         = b.tokens :+ a.token
+          toBeInserted       = b.toBeInserted.prepend(a.events),
+          origBatchBytes     = b.origBatchBytes + a.countBytes,
+          origBatchCount     = b.origBatchCount + a.countItems,
+          badAccumulated     = b.badAccumulated.prepend(a.parseFailures).prepend(a.transformFailures),
+          tokens             = b.tokens :+ a.token,
+          maxCollectorTstamp = List(b.maxCollectorTstamp, a.events.maxCollectorTstamp()).max,
+          minCollectorTstamp = List(b.maxCollectorTstamp, a.events.maxCollectorTstamp()).min
         )
 
       def single(a: TransformedBatch): BatchAfterTransform =
@@ -402,7 +444,9 @@ object Processing {
           a.countBytes,
           a.countItems,
           ListOfList.ofLists(a.parseFailures, a.transformFailures),
-          Vector(a.token)
+          Vector(a.token),
+          a.events.maxCollectorTstamp(),
+          a.events.minCollectorTstamp()
         )
 
       def weightOf(a: TransformedBatch): Long =
