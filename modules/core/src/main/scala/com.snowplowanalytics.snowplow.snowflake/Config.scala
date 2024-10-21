@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDeco
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
-import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
 case class Config[+Source, +Sink](
@@ -32,7 +32,8 @@ case class Config[+Source, +Sink](
   retries: Config.Retries,
   skipSchemas: List[SchemaCriterion],
   telemetry: Telemetry.Config,
-  monitoring: Config.Monitoring
+  monitoring: Config.Monitoring,
+  http: Config.Http
 )
 
 object Config {
@@ -99,6 +100,8 @@ object Config {
     transientErrors: Retrying.Config.ForTransient
   )
 
+  case class Http(client: HttpClient.Config)
+
   implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
@@ -125,6 +128,7 @@ object Config {
     implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
+    implicit val httpDecoder        = deriveConfiguredDecoder[Http]
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 

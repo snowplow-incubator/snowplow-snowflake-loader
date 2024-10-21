@@ -17,7 +17,7 @@ import com.comcast.ip4s.Port
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.pubsub.GcpUserAgent
 import com.snowplowanalytics.snowplow.runtime.Metrics.StatsdConfig
-import com.snowplowanalytics.snowplow.runtime.{ConfigParser, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{ConfigParser, HttpClient, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.sinks.pubsub.PubsubSinkConfig
 import com.snowplowanalytics.snowplow.snowflake.Config.Snowflake
 import com.snowplowanalytics.snowplow.sources.pubsub.PubsubSourceConfig
@@ -62,14 +62,15 @@ class PubsubConfigSpec extends Specification with CatsEffect {
 object PubsubConfigSpec {
   private val minimalConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
-      subscription               = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullFactor         = 0.5,
-      bufferMaxBytes             = 10000000,
-      maxAckExtensionPeriod      = 1.hour,
-      minDurationPerAckExtension = 1.minute,
-      maxDurationPerAckExtension = 10.minutes,
-      gcpUserAgent               = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
-      shutdownTimeout            = 30.seconds
+      subscription                = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
+      parallelPullFactor          = 0.5,
+      bufferMaxBytes              = 10000000,
+      maxAckExtensionPeriod       = 1.hour,
+      minDurationPerAckExtension  = 1.minute,
+      maxDurationPerAckExtension  = 10.minutes,
+      gcpUserAgent                = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
+      shutdownTimeout             = 30.seconds,
+      maxPullsPerTransportChannel = 16
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -125,8 +126,9 @@ object PubsubConfigSpec {
       metrics     = Config.Metrics(None),
       sentry      = None,
       healthProbe = Config.HealthProbe(port = Port.fromInt(8000).get, unhealthyLatency = 5.minutes),
-      webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 60.minutes)
-    )
+      webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 5.minutes)
+    ),
+    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
   )
 
   /**
@@ -134,14 +136,15 @@ object PubsubConfigSpec {
    */
   private val extendedConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
-      subscription               = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullFactor         = 0.5,
-      bufferMaxBytes             = 1000000,
-      maxAckExtensionPeriod      = 1.hour,
-      minDurationPerAckExtension = 1.minute,
-      maxDurationPerAckExtension = 10.minutes,
-      gcpUserAgent               = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
-      shutdownTimeout            = 30.seconds
+      subscription                = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
+      parallelPullFactor          = 0.5,
+      bufferMaxBytes              = 1000000,
+      maxAckExtensionPeriod       = 1.hour,
+      minDurationPerAckExtension  = 1.minute,
+      maxDurationPerAckExtension  = 10.minutes,
+      gcpUserAgent                = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
+      shutdownTimeout             = 30.seconds,
+      maxPullsPerTransportChannel = 16
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -217,6 +220,7 @@ object PubsubConfigSpec {
       ),
       webhook =
         Webhook.Config(endpoint = Some(uri"https://webhook.acme.com"), tags = Map("pipeline" -> "production"), heartbeat = 60.minutes)
-    )
+    ),
+    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
   )
 }
