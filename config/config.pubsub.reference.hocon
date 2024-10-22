@@ -19,6 +19,10 @@
     # -- The actual value used is guided by runtime statistics collected by the pubsub client library.
     "minDurationPerAckExtension": "60 seconds"
     "maxDurationPerAckExtension": "600 seconds"
+
+    # -- The maximum number of streaming pulls we allow on a single GRPC transport channel before opening another channel.
+    # -- This advanced setting is only relevant on extremely large VMs, or with a high value of `parallelPullCount`.
+    "maxPullsPerTransportChannel": 16
   }
 
   "output": {
@@ -148,6 +152,13 @@
       }
       # How often to send the heartbeat event
       "heartbeat": "60.minutes"
+    }
+  }
+
+  # -- Configuration of internal http client used for alerts and telemetry
+  "http": {
+    "client": {
+      "maxConnectionsPerServer": 4
     }
   }
 

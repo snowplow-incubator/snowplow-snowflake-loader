@@ -149,6 +149,13 @@
     }
   }
 
+  # -- Configuration of internal http client used for alerts and telemetry
+  "http": {
+    "client": {
+      "maxConnectionsPerServer": 4
+    }
+  }
+
   # -- Optional, configure telemetry
   # -- All the fields are optional
   "telemetry": {

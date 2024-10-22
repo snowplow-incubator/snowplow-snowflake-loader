@@ -11,14 +11,12 @@
 package com.snowplowanalytics.snowplow.snowflake
 
 import cats.implicits._
-import cats.effect.unsafe.implicits.global
 import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Webhook}
 import com.snowplowanalytics.snowplow.sinks.Sink
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import com.snowplowanalytics.snowplow.sources.SourceAndAck
-import org.http4s.blaze.client.BlazeClientBuilder
 import org.http4s.client.Client
 
 case class Environment[F[_]](
@@ -48,7 +46,7 @@ object Environment {
       sourceAndAck <- Resource.eval(toSource(config.input))
       sourceReporter = sourceAndAck.isHealthy(config.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
       appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
-      httpClient <- BlazeClientBuilder[F].withExecutionContext(global.compute).resource
+      httpClient <- HttpClient.resource[F](config.http.client)
       _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth)
       _ <- Webhook.resource(config.monitoring.webhook, appInfo, httpClient, appHealth)
       badSink <- toSink(config.output.bad.sink).onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
