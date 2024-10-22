@@ -27,10 +27,6 @@
       "maxRecords": 1000
     }
 
-    # -- The number of batches of events which are pre-fetched from kinesis.
-    # -- Increasing this above 1 is not known to improve performance.
-    "bufferSize": 1
-
   }
 
   "output": {
@@ -167,6 +163,13 @@
       }
       # How often to send the heartbeat event
       "heartbeat": "60.minutes"
+    }
+  }
+
+  # -- Configuration of internal http client used for alerts and telemetry
+  "http": {
+    "client": {
+      "maxConnectionsPerServer": 4
     }
   }
 

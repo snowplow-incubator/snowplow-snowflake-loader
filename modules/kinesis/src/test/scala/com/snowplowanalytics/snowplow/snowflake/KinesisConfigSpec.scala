@@ -16,11 +16,10 @@ import cats.effect.{ExitCode, IO}
 import com.comcast.ip4s.Port
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.Metrics.StatsdConfig
-import com.snowplowanalytics.snowplow.runtime.{ConfigParser, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{ConfigParser, HttpClient, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.sinks.kinesis.{BackoffPolicy, KinesisSinkConfig}
 import com.snowplowanalytics.snowplow.snowflake.Config.Snowflake
 import com.snowplowanalytics.snowplow.sources.kinesis.KinesisSourceConfig
-import eu.timepit.refined.types.all.PosInt
 import org.http4s.implicits.http4sLiteralsSyntax
 import org.specs2.Specification
 
@@ -67,7 +66,6 @@ object KinesisConfigSpec {
       workerIdentifier         = "testWorkerId",
       initialPosition          = KinesisSourceConfig.InitialPosition.Latest,
       retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
-      bufferSize               = PosInt.unsafeFrom(1),
       customEndpoint           = None,
       dynamodbCustomEndpoint   = None,
       cloudwatchCustomEndpoint = None,
@@ -128,8 +126,9 @@ object KinesisConfigSpec {
       metrics     = Config.Metrics(None),
       sentry      = None,
       healthProbe = Config.HealthProbe(port = Port.fromInt(8000).get, unhealthyLatency = 5.minutes),
-      webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 60.minutes)
-    )
+      webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 5.minutes)
+    ),
+    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
   )
 
   /**
@@ -142,7 +141,6 @@ object KinesisConfigSpec {
       workerIdentifier         = "testWorkerId",
       initialPosition          = KinesisSourceConfig.InitialPosition.TrimHorizon,
       retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
-      bufferSize               = PosInt.unsafeFrom(1),
       customEndpoint           = None,
       dynamodbCustomEndpoint   = None,
       cloudwatchCustomEndpoint = None,
@@ -223,6 +221,7 @@ object KinesisConfigSpec {
       ),
       webhook =
         Webhook.Config(endpoint = Some(uri"https://webhook.acme.com"), tags = Map("pipeline" -> "production"), heartbeat = 60.minutes)
-    )
+    ),
+    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
   )
 }

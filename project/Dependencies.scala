@@ -35,7 +35,7 @@ object Dependencies {
     val protobuf  = "3.25.5" // Version override
 
     // Snowplow
-    val streams = "0.8.0-M2"
+    val streams = "0.8.0-M6"
 
     // tests
     val specs2           = "4.20.0"
@@ -43,7 +43,6 @@ object Dependencies {
 
   }
 
-  val blazeClient       = "org.http4s"   %% "http4s-blaze-client"  % V.http4s
   val http4sCirce       = "org.http4s"   %% "http4s-circe"         % V.http4s
   val decline           = "com.monovore" %% "decline-effect"       % V.decline
   val circeGenericExtra = "io.circe"     %% "circe-generic-extras" % V.circe
@@ -81,7 +80,6 @@ object Dependencies {
     streamsCore,
     loaders,
     runtime,
-    blazeClient,
     http4sCirce,
     decline,
     sentry,
