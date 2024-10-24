@@ -20,8 +20,8 @@ jobs:
         uses: sbt/setup-sbt@v1
       - name: Check Scala formatting
         run: sbt scalafmtCheckAll scalafmtSbtCheck
-#      - name: Run tests
-#        run: sbt test
+      - name: Run tests
+        run: sbt test
 
   publish_docker:
     needs: test

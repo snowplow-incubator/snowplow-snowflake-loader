@@ -11,9 +11,12 @@
 package com.snowplowanalytics.snowplow.snowflake
 
 import cats.effect.Async
-import cats.effect.kernel.Ref
+import cats.effect.kernel.{Ref, Unique}
 import cats.implicits._
 import fs2.Stream
+
+import java.time.Instant
+import java.util.concurrent.atomic.AtomicReference
 
 import com.snowplowanalytics.snowplow.runtime.{Metrics => CommonMetrics}
 
@@ -24,8 +27,8 @@ trait Metrics[F[_]] {
   def setLatencyCollectorToTargetMillis(latencyMillis: Long): F[Unit]
   def setLatencyCollectorToTargetPessimisticMillis(latencyMillis: Long): F[Unit]
 
-  def setFailedMaxCollectorTstamp(tstampMillis: Long): F[Unit]
-  def clearFailedMaxCollectorTstamp(): F[Unit]
+  def addOutstandingBatch(token: Unique.Token, maxCollectorTimestamp: Instant): F[Unit]
+  def clearOutstandingBatch(token: Unique.Token): F[Unit]
 
   def report: Stream[F, Nothing]
 }
@@ -33,7 +36,10 @@ trait Metrics[F[_]] {
 object Metrics {
 
   def build[F[_]: Async](config: Config.Metrics): F[Metrics[F]] =
-    Ref[F].of(State.empty).map(impl(config, _))
+    for {
+      outstandingBatches <- Async[F].delay(new AtomicReference(Map.empty[Unique.Token, Instant]))
+      ref <- Ref[F].of(State.empty(outstandingBatches))
+    } yield impl(config, ref, outstandingBatches)
 
   private case class State(
     good: Int,
@@ -41,17 +47,27 @@ object Metrics {
     latencyMillis: Long,
     latencyCollectorToTargetMillis: Option[Long],
     latencyCollectorToTargetPessimisticMillis: Option[Long],
-    failedMaxCollectorTstampMillis: Option[Long]
+    outstandingBatches: AtomicReference[Map[Unique.Token, Instant]]
   ) extends CommonMetrics.State {
-    private def getLatencyCollectorToTargetMillis: Long = {
-      lazy val failedLatency = failedMaxCollectorTstampMillis.map(t => System.currentTimeMillis() - t)
-      latencyCollectorToTargetMillis.fold(failedLatency.fold(0L)(identity))(identity)
-    }
+    private def getLatencyCollectorToTargetMillis: Long =
+      latencyCollectorToTargetMillis match {
+        case Some(t) => t
+        case None =>
+          outstandingBatches.get.values.maxOption match {
+            case Some(t) => System.currentTimeMillis - t.toEpochMilli
+            case None    => 0L
+          }
+      }
 
-    private def getLatencyCollectorToTargetPessimisticMillis: Long = {
-      lazy val failedLatency = failedMaxCollectorTstampMillis.map(t => System.currentTimeMillis() - t)
-      latencyCollectorToTargetPessimisticMillis.fold(failedLatency.fold(0L)(identity))(identity)
-    }
+    private def getLatencyCollectorToTargetPessimisticMillis: Long =
+      latencyCollectorToTargetPessimisticMillis match {
+        case Some(t) => t
+        case None =>
+          outstandingBatches.get.values.maxOption match {
+            case Some(t) => System.currentTimeMillis - t.toEpochMilli
+            case None    => 0L
+          }
+      }
 
     def toKVMetrics: List[CommonMetrics.KVMetric] =
       List(
@@ -64,11 +80,15 @@ object Metrics {
   }
 
   private object State {
-    def empty: State = State(0, 0, 0L, None, None, None)
+    def empty(outstandingBatches: AtomicReference[Map[Unique.Token, Instant]]): State = State(0, 0, 0L, None, None, outstandingBatches)
   }
 
-  private def impl[F[_]: Async](config: Config.Metrics, ref: Ref[F, State]): Metrics[F] =
-    new CommonMetrics[F, State](ref, State.empty, config.statsd) with Metrics[F] {
+  private def impl[F[_]: Async](
+    config: Config.Metrics,
+    ref: Ref[F, State],
+    outstandingBatches: AtomicReference[Map[Unique.Token, Instant]]
+  ): Metrics[F] =
+    new CommonMetrics[F, State](ref, State.empty(outstandingBatches), config.statsd) with Metrics[F] {
       def addGood(count: Int): F[Unit] =
         ref.update(s => s.copy(good = s.good + count))
       def addBad(count: Int): F[Unit] =
@@ -86,12 +106,11 @@ object Metrics {
           )
         )
 
-      def setFailedMaxCollectorTstamp(tstampMillis: Long): F[Unit] =
-        ref.update(s =>
-          s.copy(failedMaxCollectorTstampMillis = s.failedMaxCollectorTstampMillis.fold(tstampMillis)(_.max(tstampMillis)).some)
-        )
-      def clearFailedMaxCollectorTstamp(): F[Unit] =
-        ref.update(s => s.copy(failedMaxCollectorTstampMillis = None))
+      def addOutstandingBatch(token: Unique.Token, maxCollectorTimestamp: Instant): F[Unit] =
+        Async[F].delay(outstandingBatches.updateAndGet(_ + (token -> maxCollectorTimestamp))).void
+
+      def clearOutstandingBatch(token: Unique.Token): F[Unit] =
+        Async[F].delay(outstandingBatches.updateAndGet(_ - token)).void
     }
 
   private object KVMetric {
