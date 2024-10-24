@@ -21,6 +21,7 @@ import fs2.Stream
 import org.http4s.client.Client
 
 import scala.concurrent.duration.{DurationInt, FiniteDuration}
+import java.time.Instant
 
 case class MockEnvironment(state: Ref[IO, Vector[MockEnvironment.Action]], environment: Environment[IO])
 
@@ -178,6 +179,11 @@ object MockEnvironment {
 
     def setLatencyMillis(latencyMillis: Long): IO[Unit] =
       ref.update(_ :+ SetLatencyMetric(latencyMillis))
+
+    def setLatencyCollectorToTargetMillis(latencyMillis: Long): IO[Unit]                   = IO.unit
+    def setLatencyCollectorToTargetPessimisticMillis(latencyMillis: Long): IO[Unit]        = IO.unit
+    def addOutstandingBatch(token: Unique.Token, maxCollectorTimestamp: Instant): IO[Unit] = IO.unit
+    def clearOutstandingBatch(token: Unique.Token): IO[Unit]                               = IO.unit
 
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }
