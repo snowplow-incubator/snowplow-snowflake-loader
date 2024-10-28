@@ -134,6 +134,7 @@ object Processing {
       .through(transform(badProcessor, env.schemasToSkip))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
+      .through(setCollectorToTargetLatencyMetrics(env.metrics))
       .through(sendFailedEvents(env, badProcessor))
       .through(sendMetrics(env))
       .through(emitTokens)
@@ -262,18 +263,20 @@ object Processing {
       }
   }
 
-  private def setCollectorToTargetLatencyMetrics[F[_]: Sync](metrics: Metrics[F], batch: BatchAfterTransform): F[Unit] =
-    (batch.maxCollectorTstamp, batch.minCollectorTstamp)
-      .mapN { (maxCT, minCT) =>
-        for {
-          now <- Sync[F].realTime
-          optimistic  = now.toMillis - maxCT.toEpochMilli
-          pessimistic = now.toMillis - minCT.toEpochMilli
-          _ <- metrics.setLatencyCollectorToTargetMillis(optimistic)
-          _ <- metrics.setLatencyCollectorToTargetPessimisticMillis(pessimistic)
-        } yield ()
-      }
-      .fold(Sync[F].unit)(identity)
+  private def setCollectorToTargetLatencyMetrics[F[_]: Sync](metrics: Metrics[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+    _.evalTap { batch =>
+      (batch.maxCollectorTstamp, batch.minCollectorTstamp)
+        .mapN { (maxCT, minCT) =>
+          for {
+            now <- Sync[F].realTime
+            optimistic  = now.toMillis - maxCT.toEpochMilli
+            pessimistic = now.toMillis - minCT.toEpochMilli
+            _ <- metrics.setLatencyCollectorToTargetMillis(optimistic)
+            _ <- metrics.setLatencyCollectorToTargetPessimisticMillis(pessimistic)
+          } yield ()
+        }
+        .fold(Sync[F].unit)(identity)
+    }
 
   /**
    * First attempt to write events with the Snowflake SDK
@@ -287,13 +290,8 @@ object Processing {
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
     withWriteAttempt(env, batch) { notWritten =>
-      val setLatency =
-        // best case branch 1 - all events are inserted
-        if (notWritten.isEmpty) setCollectorToTargetLatencyMetrics(env.metrics, batch)
-        else Sync[F].unit
       val parsedResult = ParsedWriteResult.buildFrom(batch.toBeInserted, notWritten)
       for {
-        _ <- setLatency
         _ <- abortIfFatalException[F](parsedResult.unexpectedFailures)
         _ <- handleSchemaEvolution(env, parsedResult.extraColsRequired)
       } yield {
@@ -319,17 +317,13 @@ object Processing {
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
     withWriteAttempt(env, batch) { notWritten =>
-      val setLatency =
-        // best case branch 2 - all remaining events left from attempt 1 are inserted
-        if (notWritten.isEmpty) setCollectorToTargetLatencyMetrics(env.metrics, batch)
-        else Sync[F].unit
       val mapped = notWritten match {
         case Nil => Nil
         case more =>
           val indexed = batch.toBeInserted.copyToIndexedSeq
           more.map(f => (fastGetByIndex(indexed, f.index)._1, f.cause))
       }
-      setLatency >> abortIfFatalException[F](mapped).as {
+      abortIfFatalException[F](mapped).as {
         val moreBad = mapped.map { case (event, sfe) =>
           badRowFromEnqueueFailure(badProcessor, event, sfe)
         }
