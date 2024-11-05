@@ -27,14 +27,14 @@ lazy val core: Project = project
 
 lazy val kafka: Project = project
   .in(file("modules/kafka"))
-  .settings(BuildSettings.kafkaSettings)
+  .settings(BuildSettings.kafkaSettings ++ BuildSettings.dockerSettingsUbuntu)
   .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val kafkaDistroless: Project = project
   .in(file("modules/distroless/kafka"))
-  .settings(BuildSettings.kafkaSettings)
+  .settings(BuildSettings.kafkaSettings ++ BuildSettings.dockerSettingsDistroless)
   .settings(libraryDependencies ++= Dependencies.kafkaDependencies)
   .settings(sourceDirectory := (kafka / sourceDirectory).value)
   .dependsOn(core)
@@ -42,14 +42,14 @@ lazy val kafkaDistroless: Project = project
 
 lazy val pubsub: Project = project
   .in(file("modules/pubsub"))
-  .settings(BuildSettings.pubsubSettings)
+  .settings(BuildSettings.pubsubSettings ++ BuildSettings.dockerSettingsUbuntu)
   .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val pubsubDistroless: Project = project
   .in(file("modules/distroless/pubsub"))
-  .settings(BuildSettings.pubsubSettings)
+  .settings(BuildSettings.pubsubSettings ++ BuildSettings.dockerSettingsDistroless)
   .settings(libraryDependencies ++= Dependencies.pubsubDependencies)
   .settings(sourceDirectory := (pubsub / sourceDirectory).value)
   .dependsOn(core)
@@ -57,14 +57,14 @@ lazy val pubsubDistroless: Project = project
 
 lazy val kinesis: Project = project
   .in(file("modules/kinesis"))
-  .settings(BuildSettings.kinesisSettings)
+  .settings(BuildSettings.kinesisSettings ++ BuildSettings.dockerSettingsUbuntu)
   .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
   .dependsOn(core)
   .enablePlugins(BuildInfoPlugin, JavaAppPackaging, SnowplowDockerPlugin)
 
 lazy val kinesisDistroless: Project = project
   .in(file("modules/distroless/kinesis"))
-  .settings(BuildSettings.kinesisSettings)
+  .settings(BuildSettings.kinesisSettings ++ BuildSettings.dockerSettingsDistroless)
   .settings(libraryDependencies ++= Dependencies.kinesisDependencies)
   .settings(sourceDirectory := (kinesis / sourceDirectory).value)
   .dependsOn(core)
