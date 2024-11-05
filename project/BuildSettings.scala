@@ -18,6 +18,7 @@ import sbtbuildinfo.BuildInfoPlugin.autoImport._
 import sbtbuildinfo.BuildInfoPlugin.autoImport._
 import sbtdynver.DynVerPlugin.autoImport._
 import com.typesafe.sbt.packager.docker.DockerPlugin.autoImport._
+import com.typesafe.sbt.packager.universal.UniversalPlugin.autoImport._
 import de.heikoseeberger.sbtheader.HeaderPlugin.autoImport._
 
 import scala.sys.process._
@@ -60,6 +61,17 @@ object BuildSettings {
       "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase",
       "HOSTNAME" -> "testWorkerId"
     )
+  )
+
+  lazy val dockerSettingsUbuntu = Seq(
+    Universal / javaOptions ++= Seq("-Dnet.snowflake.jdbc.loggerImpl=net.snowflake.client.log.SLF4JLogger")
+  )
+
+  lazy val dockerSettingsDistroless = Seq(
+    dockerEntrypoint := {
+      val orig = dockerEntrypoint.value
+      orig.head +: "-Dnet.snowflake.jdbc.loggerImpl=net.snowflake.client.log.SLF4JLogger" +: orig.tail
+    }
   )
 
   lazy val appSettings = Seq(
