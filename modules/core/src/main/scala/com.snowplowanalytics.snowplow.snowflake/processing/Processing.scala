@@ -22,6 +22,7 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -41,19 +42,11 @@ object Processing {
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
     Stream.eval(env.tableManager.initializeEventsTable()) *>
-      Stream.eval(env.channel.opened.use_) *>
+      Stream.eval(env.channels.head.opened.use_) *>
       env.source.stream(eventProcessingConfig, eventProcessor(env))
   }
 
   /** Model used between stages of the processing pipeline */
-
-  private case class ParsedBatch(
-    events: List[Event],
-    parseFailures: List[BadRow],
-    countBytes: Long,
-    countItems: Int,
-    token: Unique.Token
-  )
 
   private case class TransformedBatch(
     events: List[EventWithTransform],
@@ -107,7 +100,7 @@ object Processing {
   )
 
   private object ParsedWriteResult {
-    def empty: ParsedWriteResult = ParsedWriteResult(Set.empty, Nil, Nil)
+    private def empty: ParsedWriteResult = ParsedWriteResult(Set.empty, Nil, Nil)
 
     def buildFrom(events: ListOfList[EventWithTransform], writeFailures: List[Channel.WriteFailure]): ParsedWriteResult =
       if (writeFailures.isEmpty)
@@ -128,8 +121,7 @@ object Processing {
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
     in.through(setLatency(env.metrics))
-      .through(parseBytes(badProcessor))
-      .through(transform(badProcessor, env.schemasToSkip))
+      .through(parseAndTransform(env, badProcessor))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
       .through(sendFailedEvents(env, badProcessor))
@@ -152,8 +144,8 @@ object Processing {
     }
 
   /** Parse raw bytes into Event using analytics sdk */
-  private def parseBytes[F[_]: Sync](badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, ParsedBatch] =
-    _.evalMap { case TokenedEvents(chunk, token, _) =>
+  private def parseAndTransform[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, TransformedBatch] =
+    _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token, _) =>
       for {
         numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
         (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { bytes =>
@@ -164,29 +156,20 @@ object Processing {
                                  }
                                }
                              }
-      } yield ParsedBatch(events, badRows, numBytes, chunk.size, token)
-    }
-
-  /** Transform the Event into values compatible with the snowflake ingest sdk */
-  private def transform[F[_]: Sync](
-    badProcessor: BadRowProcessor,
-    schemasToSkip: List[SchemaCriterion]
-  ): Pipe[F, ParsedBatch, TransformedBatch] =
-    _.evalMap { batch =>
-      Sync[F].realTimeInstant.flatMap { now =>
-        val loadTstamp = SnowflakeCaster.timestampValue(now)
-        transformBatch[F](badProcessor, loadTstamp, batch, schemasToSkip)
-      }
+        now <- Sync[F].realTimeInstant
+        loadTstamp = SnowflakeCaster.timestampValue(now)
+        (transformBad, transformed) <- transformBatch(badProcessor, loadTstamp, events, env.schemasToSkip)
+      } yield TransformedBatch(transformed, transformBad, badRows, numBytes, chunk.size, token)
     }
 
   private def transformBatch[F[_]: Sync](
     badProcessor: BadRowProcessor,
     loadTstamp: OffsetDateTime,
-    batch: ParsedBatch,
+    events: List[Event],
     schemasToSkip: List[SchemaCriterion]
-  ): F[TransformedBatch] =
+  ): F[(List[BadRow], List[EventWithTransform])] =
     Foldable[List]
-      .traverseSeparateUnordered(batch.events) { event =>
+      .traverseSeparateUnordered(events) { event =>
         Sync[F].delay {
           Transform
             .transformEventUnstructured[AnyRef](badProcessor, SnowflakeCaster, SnowflakeJsonFolder, event, schemasToSkip)
@@ -201,23 +184,22 @@ object Processing {
             }
         }
       }
-      .map { case (transformFailures, eventsWithTransforms) =>
-        TransformedBatch(eventsWithTransforms, batch.parseFailures, transformFailures, batch.countBytes, batch.countItems, batch.token)
-      }
 
   private def writeToSnowflake[F[_]: Async](
     env: Environment[F],
     badProcessor: BadRowProcessor
   ): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
-    _.parEvalMap(env.batching.uploadConcurrency) { batch =>
-      for {
-        batch <- writeAttempt1(env, badProcessor, batch)
-        batch <- writeAttempt2(env, badProcessor, batch)
-      } yield batch
-    }
+    _.zip(Stream.emits(env.channels).repeat)
+      .parEvalMap(env.channels.length) { case (batch, channelProvider) =>
+        for {
+          batch <- writeAttempt1(env, badProcessor, channelProvider, batch)
+          batch <- writeAttempt2(env, badProcessor, channelProvider, batch)
+        } yield batch
+      }
 
   private def withWriteAttempt[F[_]: Sync](
     env: Environment[F],
+    channelProvider: Channel.Provider[F],
     batch: BatchAfterTransform
   )(
     handleFailures: List[Channel.WriteFailure] => F[BatchAfterTransform]
@@ -227,14 +209,14 @@ object Processing {
         batch.pure[F]
       else
         Sync[F].untilDefinedM {
-          env.channel.opened
+          channelProvider.opened
             .use { channel =>
               channel.write(batch.toBeInserted.asIterable.map(_._2))
             }
             .flatMap {
               case Channel.WriteResult.ChannelIsInvalid =>
                 // Reset the channel and immediately try again
-                env.channel.closed.use_.as(none)
+                channelProvider.closed.use_.as(none)
               case Channel.WriteResult.WriteFailures(notWritten) =>
                 handleFailures(notWritten).map(Some(_))
             }
@@ -255,13 +237,14 @@ object Processing {
   private def writeAttempt1[F[_]: Sync](
     env: Environment[F],
     badProcessor: BadRowProcessor,
+    channelProvider: Channel.Provider[F],
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
-    withWriteAttempt(env, batch) { notWritten =>
+    withWriteAttempt(env, channelProvider, batch) { notWritten =>
       val parsedResult = ParsedWriteResult.buildFrom(batch.toBeInserted, notWritten)
       for {
         _ <- abortIfFatalException[F](parsedResult.unexpectedFailures)
-        _ <- handleSchemaEvolution(env, parsedResult.extraColsRequired)
+        _ <- handleSchemaEvolution(env, channelProvider, parsedResult.extraColsRequired)
       } yield {
         val moreBad = parsedResult.unexpectedFailures.map { case (event, sfe) =>
           badRowFromEnqueueFailure(badProcessor, event, sfe)
@@ -282,9 +265,10 @@ object Processing {
   private def writeAttempt2[F[_]: Sync](
     env: Environment[F],
     badProcessor: BadRowProcessor,
+    channelProvider: Channel.Provider[F],
     batch: BatchAfterTransform
   ): F[BatchAfterTransform] =
-    withWriteAttempt(env, batch) { notWritten =>
+    withWriteAttempt(env, channelProvider, batch) { notWritten =>
       val mapped = notWritten match {
         case Nil => Nil
         case more =>
@@ -347,12 +331,13 @@ object Processing {
    */
   private def handleSchemaEvolution[F[_]: Sync](
     env: Environment[F],
+    channelProvider: Channel.Provider[F],
     extraColsRequired: Set[String]
   ): F[Unit] =
     if (extraColsRequired.isEmpty)
       ().pure[F]
     else
-      env.channel.closed.surround {
+      channelProvider.closed.surround {
         env.tableManager.addColumns(extraColsRequired.toList)
       }
 
@@ -378,10 +363,33 @@ object Processing {
       env.metrics.addGood(batch.origBatchCount - countBad) *> env.metrics.addBad(countBad)
     }
 
-  private def emitTokens[F[_]]: Pipe[F, BatchAfterTransform, Unique.Token] =
-    _.flatMap { batch =>
-      Stream.emits(batch.tokens)
+  /**
+   * Batches up checkpointing tokens, so we checkpoint every 10 seconds, instead of once per batch
+   *
+   * TODO: This should move to common-streams because it will be helpful for other loaders.
+   */
+  private def emitTokens[F[_]: Async]: Pipe[F, BatchAfterTransform, Unique.Token] = {
+    implicit val batchableTokens: BatchUp.Batchable[BatchAfterTransform, Vector[Unique.Token]] =
+      new BatchUp.Batchable[BatchAfterTransform, Vector[Unique.Token]] {
+        def combine(b: Vector[Unique.Token], a: BatchAfterTransform): Vector[Unique.Token] =
+          b ++ a.tokens
+
+        def single(a: BatchAfterTransform): Vector[Unique.Token] =
+          a.tokens
+
+        def weightOf(a: BatchAfterTransform): Long =
+          0L
+      }
+
+    // This will become configurable when we migrate it to common-streams
+    val checkpointDelay = 10.seconds
+
+    BatchUp.withTimeout[F, BatchAfterTransform, Vector[Unique.Token]](Long.MaxValue, checkpointDelay).andThen {
+      _.flatMap { tokens =>
+        Stream.emits(tokens)
+      }
     }
+  }
 
   private def fastGetByIndex[A](items: IndexedSeq[A], index: Long): A = items(index.toInt)
 

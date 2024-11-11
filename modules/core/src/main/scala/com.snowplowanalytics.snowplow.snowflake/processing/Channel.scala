@@ -102,14 +102,14 @@ object Channel {
 
   def opener[F[_]: Async](
     config: Config.Snowflake,
-    batchingConfig: Config.Batching,
     retriesConfig: Config.Retries,
-    appHealth: AppHealth.Interface[F, Alert, RuntimeService]
+    appHealth: AppHealth.Interface[F, Alert, RuntimeService],
+    index: Int
   ): Resource[F, Opener[F]] =
     for {
-      client <- createClient(config, batchingConfig, retriesConfig, appHealth)
+      client <- createClient(config, retriesConfig, appHealth)
     } yield new Opener[F] {
-      def open: F[CloseableChannel[F]] = createChannel[F](config, client).map(impl[F])
+      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F])
     }
 
   def provider[F[_]: Async](
@@ -177,10 +177,12 @@ object Channel {
 
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
-    client: SnowflakeStreamingIngestClient
+    client: SnowflakeStreamingIngestClient,
+    index: Int
   ): F[SnowflakeStreamingIngestChannel] = {
+    val channelName = s"${config.channel}-$index"
     val request = OpenChannelRequest
-      .builder(config.channel)
+      .builder(channelName)
       .setDBName(config.database)
       .setSchemaName(config.schema)
       .setTableName(config.table)
@@ -188,12 +190,12 @@ object Channel {
       .setDefaultTimezone(ZoneOffset.UTC)
       .build
 
-    Logger[F].info(s"Opening channel ${config.channel}") *>
+    Logger[F].info(s"Opening channel ${channelName}") *>
       Async[F].blocking(client.openChannel(request)) <*
-      Logger[F].info(s"Successfully opened channel ${config.channel}")
+      Logger[F].info(s"Successfully opened channel ${channelName}")
   }
 
-  private def channelProperties(config: Config.Snowflake, batchingConfig: Config.Batching): Properties = {
+  private def channelProperties(config: Config.Snowflake): Properties = {
     val props = new Properties()
     props.setProperty("user", config.user)
     props.setProperty("private_key", config.privateKey)
@@ -211,14 +213,13 @@ object Channel {
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_PERCENTAGE, "0")
     props.setProperty(ParameterProvider.INSERT_THROTTLE_THRESHOLD_IN_BYTES, "0")
     props.setProperty(ParameterProvider.MAX_CHANNEL_SIZE_IN_BYTES, Long.MaxValue.toString)
-    props.setProperty(ParameterProvider.IO_TIME_CPU_RATIO, batchingConfig.uploadConcurrency.toString)
+    props.setProperty(ParameterProvider.IO_TIME_CPU_RATIO, "0")
 
     props
   }
 
   private def createClient[F[_]: Async](
     config: Config.Snowflake,
-    batchingConfig: Config.Batching,
     retriesConfig: Config.Retries,
     appHealth: AppHealth.Interface[F, Alert, RuntimeService]
   ): Resource[F, SnowflakeStreamingIngestClient] = {
@@ -228,7 +229,7 @@ object Channel {
           Sync[F].blocking {
             SnowflakeStreamingIngestClientFactory
               .builder("Snowplow_Streaming")
-              .setProperties(channelProperties(config, batchingConfig))
+              .setProperties(channelProperties(config))
               // .setParameterOverrides(Map.empty.asJava) // Not needed, as all params can also be set with Properties
               .build
           } <*

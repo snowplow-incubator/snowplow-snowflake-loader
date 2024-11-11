@@ -56,16 +56,17 @@ object MockEnvironment {
         badSink      = testBadSink(mocks.badSinkResponse, state),
         httpClient   = testHttpClient,
         tableManager = testTableManager(state),
-        channel      = channelColdswap,
+        channels     = Vector(channelColdswap),
         metrics      = testMetrics(state),
         appHealth    = testAppHealth(state),
         batching = Config.Batching(
-          maxBytes          = 16000000,
-          maxDelay          = 10.seconds,
-          uploadConcurrency = 1
+          maxBytes                = 16000000,
+          maxDelay                = 10.seconds,
+          uploadParallelismFactor = BigDecimal(1)
         ),
-        schemasToSkip = List.empty,
-        badRowMaxSize = 1000000
+        cpuParallelism = 2,
+        schemasToSkip  = List.empty,
+        badRowMaxSize  = 1000000
       )
       MockEnvironment(state, env)
     }
