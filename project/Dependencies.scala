@@ -35,7 +35,7 @@ object Dependencies {
     val protobuf  = "3.25.5" // Version override
 
     // Snowplow
-    val streams = "0.8.0-M6"
+    val streams = "0.8.1"
 
     // tests
     val specs2           = "4.20.0"
