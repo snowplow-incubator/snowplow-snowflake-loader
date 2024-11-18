@@ -16,7 +16,7 @@ import cats.effect.{ExitCode, IO}
 import com.comcast.ip4s.Port
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.Metrics.StatsdConfig
-import com.snowplowanalytics.snowplow.runtime.{ConfigParser, HttpClient, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, ConfigParser, HttpClient, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.sinks.kafka.KafkaSinkConfig
 import com.snowplowanalytics.snowplow.snowflake.Config.Snowflake
 import com.snowplowanalytics.snowplow.sources.kafka.KafkaSourceConfig
@@ -133,7 +133,8 @@ object KafkaConfigSpec {
       healthProbe = Config.HealthProbe(port = Port.fromInt(8000).get, unhealthyLatency = 5.minutes),
       webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 5.minutes)
     ),
-    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
+    http    = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4)),
+    license = AcceptedLicense()
   )
 
   /**
@@ -233,6 +234,7 @@ object KafkaConfigSpec {
       webhook =
         Webhook.Config(endpoint = Some(uri"https://webhook.acme.com"), tags = Map("pipeline" -> "production"), heartbeat = 60.minutes)
     ),
-    http = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4))
+    http    = Config.Http(HttpClient.Config(maxConnectionsPerServer = 4)),
+    license = AcceptedLicense()
   )
 }
