@@ -44,7 +44,7 @@
 
       # -- Prefix to use for the snowflake channels.
       # -- The full name will be suffixed with a number, e.g. `snowplow-1`
-      # -- The prefix be unique per loader VM
+      # -- The prefix must be unique per loader VM
       "channel": "snowplow"
 
       # -- Timeouts used for JDBC operations
@@ -77,7 +77,7 @@
     # - Events are emitted to Snowflake for a maximum of this duration, even if the `maxBytes` size has not been reached
     "maxDelay": "1 second"
 
-    # - Controls ow many batches can we send simultaneously over the network to Snowflake.
+    # - Controls how many batches can we send simultaneously over the network to Snowflake.
     # -- E.g. If there are 4 available processors, and uploadParallelismFactor = 2.5, then we send up to 10 batches in parallel
     # -- Adjusting this value can cause the app to use more or less of the available CPU.
     "uploadParallelismFactor":  2.5

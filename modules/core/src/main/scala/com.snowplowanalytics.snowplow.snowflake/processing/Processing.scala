@@ -143,7 +143,6 @@ object Processing {
       }
     }
 
-  /** Parse raw bytes into Event using analytics sdk */
   private def parseAndTransform[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, TransformedBatch] =
     _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token, _) =>
       for {
