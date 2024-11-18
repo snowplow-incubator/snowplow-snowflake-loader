@@ -101,10 +101,11 @@ object KinesisConfigSpec {
       )
     ),
     batching = Config.Batching(
-      maxBytes          = 16000000,
-      maxDelay          = 1.second,
-      uploadConcurrency = 3
+      maxBytes                = 16000000,
+      maxDelay                = 1.second,
+      uploadParallelismFactor = BigDecimal(2.5)
     ),
+    cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
       setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
       transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
@@ -176,10 +177,11 @@ object KinesisConfigSpec {
       )
     ),
     batching = Config.Batching(
-      maxBytes          = 16000000,
-      maxDelay          = 1.second,
-      uploadConcurrency = 1
+      maxBytes                = 16000000,
+      maxDelay                = 1.second,
+      uploadParallelismFactor = BigDecimal(2.5)
     ),
+    cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
       setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
       transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
