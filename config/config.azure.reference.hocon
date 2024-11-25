@@ -1,4 +1,9 @@
 {
+  # -- Full license text available in LICENSE.md
+  "license" {
+    "accept": true
+  }
+
   "input": {
     # -- kafka topic name for the source of enriched events
     "topicName": "sp-dev-enriched"

@@ -1,4 +1,8 @@
 {
+  "license" {
+    "accept": true
+  }
+
   "input": {
     "subscription": "projects/myproject/subscriptions/snowplow-enriched"
   }

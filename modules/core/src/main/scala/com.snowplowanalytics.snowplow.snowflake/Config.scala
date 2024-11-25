@@ -22,7 +22,7 @@ import com.snowplowanalytics.iglu.core.circe.CirceIgluCodecs.schemaCriterionDeco
 
 import scala.concurrent.duration.FiniteDuration
 import scala.util.Try
-import com.snowplowanalytics.snowplow.runtime.{HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
 case class Config[+Source, +Sink](
@@ -34,7 +34,8 @@ case class Config[+Source, +Sink](
   skipSchemas: List[SchemaCriterion],
   telemetry: Telemetry.Config,
   monitoring: Config.Monitoring,
-  http: Config.Http
+  http: Config.Http,
+  license: AcceptedLicense
 )
 
 object Config {
@@ -130,6 +131,8 @@ object Config {
     implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
     implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
     implicit val httpDecoder        = deriveConfiguredDecoder[Http]
+    implicit val licenseDecoder =
+      AcceptedLicense.decoder(AcceptedLicense.DocumentationLink("https://docs.snowplow.io/limited-use-license-1.1/"))
     deriveConfiguredDecoder[Config[Source, Sink]]
   }
 
