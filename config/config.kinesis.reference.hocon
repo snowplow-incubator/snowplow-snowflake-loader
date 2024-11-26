@@ -32,6 +32,17 @@
       "maxRecords": 1000
     }
 
+    # -- Name of this KCL worker used in the dynamodb lease table
+    "workerIdentifier": ${HOSTNAME}
+
+    # -- Duration of shard leases. KCL workers must periodically refresh leases in the dynamodb table before this duration expires.
+    "leaseDuration": "10 seconds"
+
+    # -- Controls how to pick the max number of leases to steal at one time.
+    # -- E.g. If there are 4 available processors, and maxLeasesToStealAtOneTimeFactor = 2.0, then allow the KCL to steal up to 8 leases.
+    # -- Allows bigger instances to more quickly acquire the shard-leases they need to combat latency
+    "maxLeasesToStealAtOneTimeFactor": 2.0
+
   }
 
   "output": {

@@ -61,15 +61,16 @@ class KinesisConfigSpec extends Specification with CatsEffect {
 object KinesisConfigSpec {
   private val minimalConfig = Config[KinesisSourceConfig, KinesisSinkConfig](
     input = KinesisSourceConfig(
-      appName                  = "snowplow-snowflake-loader",
-      streamName               = "snowplow-enriched-events",
-      workerIdentifier         = "testWorkerId",
-      initialPosition          = KinesisSourceConfig.InitialPosition.Latest,
-      retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
-      customEndpoint           = None,
-      dynamodbCustomEndpoint   = None,
-      cloudwatchCustomEndpoint = None,
-      leaseDuration            = 10.seconds
+      appName                         = "snowplow-snowflake-loader",
+      streamName                      = "snowplow-enriched-events",
+      workerIdentifier                = "testWorkerId",
+      initialPosition                 = KinesisSourceConfig.InitialPosition.Latest,
+      retrievalMode                   = KinesisSourceConfig.Retrieval.Polling(1000),
+      customEndpoint                  = None,
+      dynamodbCustomEndpoint          = None,
+      cloudwatchCustomEndpoint        = None,
+      leaseDuration                   = 10.seconds,
+      maxLeasesToStealAtOneTimeFactor = BigDecimal(2.0)
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -138,15 +139,16 @@ object KinesisConfigSpec {
    */
   private val extendedConfig = Config[KinesisSourceConfig, KinesisSinkConfig](
     input = KinesisSourceConfig(
-      appName                  = "snowplow-snowflake-loader",
-      streamName               = "snowplow-enriched-events",
-      workerIdentifier         = "testWorkerId",
-      initialPosition          = KinesisSourceConfig.InitialPosition.TrimHorizon,
-      retrievalMode            = KinesisSourceConfig.Retrieval.Polling(1000),
-      customEndpoint           = None,
-      dynamodbCustomEndpoint   = None,
-      cloudwatchCustomEndpoint = None,
-      leaseDuration            = 10.seconds
+      appName                         = "snowplow-snowflake-loader",
+      streamName                      = "snowplow-enriched-events",
+      workerIdentifier                = "testWorkerId",
+      initialPosition                 = KinesisSourceConfig.InitialPosition.TrimHorizon,
+      retrievalMode                   = KinesisSourceConfig.Retrieval.Polling(1000),
+      customEndpoint                  = None,
+      dynamodbCustomEndpoint          = None,
+      cloudwatchCustomEndpoint        = None,
+      leaseDuration                   = 10.seconds,
+      maxLeasesToStealAtOneTimeFactor = BigDecimal(2.0)
     ),
     output = Config.Output(
       good = Config.Snowflake(
