@@ -19,7 +19,7 @@ Basic usage:
 ```bash
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
-  snowplow/snowflake-loader-kafka:0.2.4 \
+  snowplow/snowflake-loader-kafka:0.3.0 \
   --config /var/config.hocon
 ```
 
@@ -30,7 +30,7 @@ The GCP snowflake loader reads the stream of enriched events from Pubsub.
 ```bash
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
-  snowplow/snowflake-loader-pubsub:0.2.4 \
+  snowplow/snowflake-loader-pubsub:0.3.0 \
   --config /var/config.hocon
 ```
 
@@ -41,7 +41,7 @@ The AWS snowflake loader reads the stream of enriched events from Kinesis.
 ```bash
 docker run \
   -v /path/to/config.hocon:/var/config.hocon \
-  snowplow/snowflake-loader-kinesis:0.2.4 \
+  snowplow/snowflake-loader-kinesis:0.3.0 \
   --config /var/config.hocon
 ```
 
@@ -71,7 +71,7 @@ Licensed under the [Snowplow Limited Use License Agreement][license]. _(If you a
 [build-image]: https://github.com/snowplow-incubator/snowplow-snowflake-streaming-loader/workflows/CI/badge.svg
 [build]: https://github.com/snowplow-incubator/snowplow-snowflake-streaming-loader/actions/workflows/ci.yml
 
-[release-image]: https://img.shields.io/badge/release-0.2.4-blue.svg?style=flat
+[release-image]: https://img.shields.io/badge/release-0.3.0-blue.svg?style=flat
 [releases]: https://github.com/snowplow-incubator/snowplow-snowflake-streaming-loader/releases
 
 [license]: https://docs.snowplow.io/limited-use-license-1.1

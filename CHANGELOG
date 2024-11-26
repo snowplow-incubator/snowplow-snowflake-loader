@@ -1,3 +1,14 @@
+Version 0.3.0 (2024-11-26)
+--------------------------
+Final upgrades for 0.3.0 (#60)
+Users must accept Snowplow Limited Use License Agreement (#58)
+Make better use of available cpu on larger VMs (#57)
+Bump common-streams to 0.8.1 (#55)
+Snowflake Ingest SDK logs adhere to application's log level (#54)
+Bump common-streams to 0.8.0-M6 (#51)
+common-streams 0.8.x with refactored health monitoring (#42)
+Change License to SLULA 1.1 (#59)
+
 Version 0.2.4 (2024-10-14)
 --------------------------
 Bump snowflake-ingest-sdk to 2.2.2 (#47)
