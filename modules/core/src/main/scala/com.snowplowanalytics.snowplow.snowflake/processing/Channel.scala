@@ -58,7 +58,7 @@ object Channel {
 
   type Provider[F[_]] = Coldswap[F, Channel[F]]
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   /**
    * The result of trying to enqueue an event for sending to Snowflake
