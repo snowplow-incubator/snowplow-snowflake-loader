@@ -12,7 +12,6 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.IO
 import cats.effect.testing.specs2.CatsEffect
-import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.snowflake.{MockEnvironment, RuntimeService}
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.{Action, Mocks, Response}
@@ -23,8 +22,6 @@ import org.specs2.Specification
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
-import java.time.Instant
-import scala.concurrent.duration.DurationLong
 
 class ProcessingSpec extends Specification with CatsEffect {
   import ProcessingSpec._
@@ -38,10 +35,9 @@ class ProcessingSpec extends Specification with CatsEffect {
     Emit BadRows when the Channel reports a problem with the data $e5
     Abort processing and don't ack events when the Channel reports a runtime error $e6
     Reset the Channel when the Channel reports the channel has become invalid $e7
-    Set the latency metric based off the message timestamp $e8
-    Mark app as unhealthy when sinking badrows fails $e9
-    Mark app as unhealthy when writing to the Channel fails with runtime exception $e10
-    Mark app as unhealthy when writing to the Channel fails SDK internal error exception $e11
+    Mark app as unhealthy when sinking badrows fails $e8
+    Mark app as unhealthy when writing to the Channel fails with runtime exception $e9
+    Mark app as unhealthy when writing to the Channel fails SDK internal error exception $e10
   """
 
   def e1 =
@@ -83,7 +79,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       bads <- inputEvents(count = 3, badlyFormatted)
       goods <- inputEvents(count = 3, good)
     } yield bads.zip(goods).map { case (bad, good) =>
-      TokenedEvents(bad.events ++ good.events, good.ack, None)
+      TokenedEvents(bad.events ++ good.events, good.ack)
     }
     runTest(toInputs) { case (inputs, control) =>
       for {
@@ -227,39 +223,6 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e8 = {
-    val messageTime = Instant.parse("2023-10-24T10:00:00.000Z")
-    val processTime = Instant.parse("2023-10-24T10:00:42.123Z")
-
-    val toInputs = inputEvents(count = 2, good).map {
-      _.map {
-        _.copy(earliestSourceTstamp = Some(messageTime))
-      }
-    }
-
-    val io = runTest(toInputs) { case (inputs, control) =>
-      for {
-        _ <- IO.sleep(processTime.toEpochMilli.millis)
-        _ <- Processing.stream(control.environment).compile.drain
-        state <- control.state.get
-      } yield state should beEqualTo(
-        Vector(
-          Action.InitEventsTable,
-          Action.OpenedChannel,
-          Action.SetLatencyMetric(42123),
-          Action.SetLatencyMetric(42123),
-          Action.WroteRowsToSnowflake(4),
-          Action.AddedGoodCountMetric(4),
-          Action.AddedBadCountMetric(0),
-          Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
-        )
-      )
-    }
-
-    TestControl.executeEmbed(io)
-
-  }
-
-  def e9 = {
     val mocks = Mocks.default.copy(
       badSinkResponse = Response.ExceptionThrown(new RuntimeException("Some error when sinking bad data"))
     )
@@ -278,7 +241,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     }
   }
 
-  def e10 = {
+  def e9 = {
     val mocks = Mocks.default.copy(
       channelResponses = List(Response.ExceptionThrown(new RuntimeException("Some error when writing to the Channel")))
     )
@@ -297,7 +260,7 @@ class ProcessingSpec extends Specification with CatsEffect {
     }
   }
 
-  def e11 = {
+  def e10 = {
     val mocks = Mocks.default.copy(
       channelResponses = List(
         Response.Success(
@@ -361,13 +324,13 @@ object ProcessingSpec {
       val serialized = Chunk(event1, event2).map { e =>
         ByteBuffer.wrap(e.toTsv.getBytes(StandardCharsets.UTF_8))
       }
-      TokenedEvents(serialized, ack, None)
+      TokenedEvents(serialized, ack)
     }
 
   def badlyFormatted: IO[TokenedEvents] =
     IO.unique.map { token =>
       val serialized = Chunk("nonsense1", "nonsense2").map(s => ByteBuffer.wrap(s.getBytes(StandardCharsets.UTF_8)))
-      TokenedEvents(serialized, token, None)
+      TokenedEvents(serialized, token)
     }
 
   // Helper to create a SFException, and remove the stacktrace so we don't clutter our test logs.

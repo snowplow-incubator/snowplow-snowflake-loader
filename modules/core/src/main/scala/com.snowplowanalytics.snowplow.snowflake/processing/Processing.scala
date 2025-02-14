@@ -30,7 +30,7 @@ import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Pr
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
 import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, TokenedEvents}
 import com.snowplowanalytics.snowplow.sinks.ListOfList
-import com.snowplowanalytics.snowplow.snowflake.{Environment, Metrics, RuntimeService}
+import com.snowplowanalytics.snowplow.snowflake.{Environment, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
 import com.snowplowanalytics.snowplow.loaders.transform.{BadRowsSerializer, Transform}
@@ -40,7 +40,7 @@ object Processing {
   private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
-    val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing)
+    val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing, env.metrics.setLatency)
     Stream.eval(env.tableManager.initializeEventsTable()) *>
       Stream.eval(env.channels.head.opened.use_) *>
       env.source.stream(eventProcessingConfig, eventProcessor(env))
@@ -120,8 +120,7 @@ object Processing {
   private def eventProcessor[F[_]: Async](env: Environment[F]): EventProcessor[F] = { in =>
     val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
 
-    in.through(setLatency(env.metrics))
-      .through(parseAndTransform(env, badProcessor))
+    in.through(parseAndTransform(env, badProcessor))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
       .through(sendFailedEvents(env, badProcessor))
@@ -129,22 +128,8 @@ object Processing {
       .through(emitTokens)
   }
 
-  private def setLatency[F[_]: Sync](metrics: Metrics[F]): Pipe[F, TokenedEvents, TokenedEvents] =
-    _.evalTap {
-      _.earliestSourceTstamp match {
-        case Some(t) =>
-          for {
-            now <- Sync[F].realTime
-            latencyMillis = now.toMillis - t.toEpochMilli
-            _ <- metrics.setLatencyMillis(latencyMillis)
-          } yield ()
-        case None =>
-          Applicative[F].unit
-      }
-    }
-
   private def parseAndTransform[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, TransformedBatch] =
-    _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token, _) =>
+    _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token) =>
       for {
         numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
         (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { bytes =>

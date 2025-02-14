@@ -43,6 +43,11 @@
     # -- Allows bigger instances to more quickly acquire the shard-leases they need to combat latency
     "maxLeasesToStealAtOneTimeFactor": 2.0
 
+    # -- Configures how to backoff and retry in case of DynamoDB provisioned throughput limits
+    "checkpointThrottledBackoffPolicy": {
+      "minBackoff": "100 millis"
+      "maxBackoff": "1 second"
+    }
   }
 
   "output": {
