@@ -62,15 +62,13 @@ class PubsubConfigSpec extends Specification with CatsEffect {
 object PubsubConfigSpec {
   private val minimalConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
-      subscription                = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullFactor          = 0.5,
-      bufferMaxBytes              = 10000000,
-      maxAckExtensionPeriod       = 1.hour,
-      minDurationPerAckExtension  = 1.minute,
-      maxDurationPerAckExtension  = 10.minutes,
-      gcpUserAgent                = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
-      shutdownTimeout             = 30.seconds,
-      maxPullsPerTransportChannel = 16
+      subscription            = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
+      parallelPullFactor      = 0.5,
+      durationPerAckExtension = 60.seconds,
+      minRemainingAckDeadline = 0.1,
+      maxMessagesPerPull      = 1000,
+      debounceRequests        = 100.millis,
+      gcpUserAgent            = GcpUserAgent("Snowplow OSS", "snowflake-loader")
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -138,15 +136,13 @@ object PubsubConfigSpec {
    */
   private val extendedConfig = Config[PubsubSourceConfig, PubsubSinkConfig](
     input = PubsubSourceConfig(
-      subscription                = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
-      parallelPullFactor          = 0.5,
-      bufferMaxBytes              = 1000000,
-      maxAckExtensionPeriod       = 1.hour,
-      minDurationPerAckExtension  = 1.minute,
-      maxDurationPerAckExtension  = 10.minutes,
-      gcpUserAgent                = GcpUserAgent("Snowplow OSS", "snowflake-loader"),
-      shutdownTimeout             = 30.seconds,
-      maxPullsPerTransportChannel = 16
+      subscription            = PubsubSourceConfig.Subscription("myproject", "snowplow-enriched"),
+      parallelPullFactor      = 0.5,
+      durationPerAckExtension = 60.seconds,
+      minRemainingAckDeadline = 0.1,
+      maxMessagesPerPull      = 1000,
+      debounceRequests        = 100.millis,
+      gcpUserAgent            = GcpUserAgent("Snowplow OSS", "snowflake-loader")
     ),
     output = Config.Output(
       good = Config.Snowflake(

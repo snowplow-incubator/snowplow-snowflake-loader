@@ -61,7 +61,7 @@ object Environment {
       _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth)
       _ <- Webhook.resource(config.monitoring.webhook, appInfo, httpClient, appHealth)
       badSink <- toSink(config.output.bad.sink).onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
-      metrics <- Resource.eval(Metrics.build(config.monitoring.metrics))
+      metrics <- Resource.eval(Metrics.build(config.monitoring.metrics, sourceAndAck))
       tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries))
       cpuParallelism    = chooseCpuParallelism(config)
       uploadParallelism = chooseUploadParallelism(config)

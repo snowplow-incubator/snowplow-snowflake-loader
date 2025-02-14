@@ -26,7 +26,7 @@ object Dependencies {
     val sentry    = "6.25.2"
     val snowflake = "3.0.0"
     val jaxb      = "2.3.1"
-    val awsSdk2   = "2.25.16"
+    val awsSdk2   = "2.29.0"
     val netty     = "4.1.100.Final" // Version override
     val reactor   = "1.0.39" // Version override
     val snappy    = "1.1.10.4" // Version override
@@ -35,7 +35,7 @@ object Dependencies {
     val protobuf  = "3.25.5" // Version override
 
     // Snowplow
-    val streams = "0.9.0"
+    val streams = "0.10.0"
 
     // tests
     val specs2           = "4.20.0"
