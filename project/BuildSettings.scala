@@ -60,6 +60,13 @@ object BuildSettings {
       "SNOWFLAKE_PRIVATE_KEY" -> "secretPrivateKey",
       "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase",
       "HOSTNAME" -> "testWorkerId"
+    ),
+    libraryDependencySchemes ++= Seq(
+      // kafka-clients uses version 1.5.6-4, snowflake-ingest-sdk uses version 1.5.0-1 of zstd-jni.
+      // SBT reports version conflict between these two versions however this is a Java library and
+      // doesn't follow Early Semver version scheme that is recommended for Scala libraries.
+      // Therefore, version conflict reports for this library are ignored.
+      "com.github.luben" % "zstd-jni" % VersionScheme.Always
     )
   )
 

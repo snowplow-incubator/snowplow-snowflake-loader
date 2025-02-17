@@ -72,7 +72,8 @@ object KinesisConfigSpec {
       cloudwatchCustomEndpoint         = None,
       leaseDuration                    = 10.seconds,
       maxLeasesToStealAtOneTimeFactor  = BigDecimal(2.0),
-      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second)
+      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
+      debounceCheckpoints              = 10.seconds
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -151,7 +152,8 @@ object KinesisConfigSpec {
       cloudwatchCustomEndpoint         = None,
       leaseDuration                    = 10.seconds,
       maxLeasesToStealAtOneTimeFactor  = BigDecimal(2.0),
-      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second)
+      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
+      debounceCheckpoints              = 10.seconds
     ),
     output = Config.Output(
       good = Config.Snowflake(
