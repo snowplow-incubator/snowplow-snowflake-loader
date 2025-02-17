@@ -60,6 +60,9 @@ object BuildSettings {
       "SNOWFLAKE_PRIVATE_KEY" -> "secretPrivateKey",
       "SNOWFLAKE_PRIVATE_KEY_PASSPHRASE" -> "secretKeyPassphrase",
       "HOSTNAME" -> "testWorkerId"
+    ),
+    libraryDependencySchemes ++= Seq(
+      "com.github.luben" % "zstd-jni" % VersionScheme.Always
     )
   )
 

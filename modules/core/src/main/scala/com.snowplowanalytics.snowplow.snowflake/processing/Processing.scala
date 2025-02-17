@@ -22,7 +22,6 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
-import scala.concurrent.duration.DurationLong
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -347,33 +346,10 @@ object Processing {
       env.metrics.addGood(batch.origBatchCount - countBad) *> env.metrics.addBad(countBad)
     }
 
-  /**
-   * Batches up checkpointing tokens, so we checkpoint every 10 seconds, instead of once per batch
-   *
-   * TODO: This should move to common-streams because it will be helpful for other loaders.
-   */
-  private def emitTokens[F[_]: Async]: Pipe[F, BatchAfterTransform, Unique.Token] = {
-    implicit val batchableTokens: BatchUp.Batchable[BatchAfterTransform, Vector[Unique.Token]] =
-      new BatchUp.Batchable[BatchAfterTransform, Vector[Unique.Token]] {
-        def combine(b: Vector[Unique.Token], a: BatchAfterTransform): Vector[Unique.Token] =
-          b ++ a.tokens
-
-        def single(a: BatchAfterTransform): Vector[Unique.Token] =
-          a.tokens
-
-        def weightOf(a: BatchAfterTransform): Long =
-          0L
-      }
-
-    // This will become configurable when we migrate it to common-streams
-    val checkpointDelay = 10.seconds
-
-    BatchUp.withTimeout[F, BatchAfterTransform, Vector[Unique.Token]](Long.MaxValue, checkpointDelay).andThen {
-      _.flatMap { tokens =>
-        Stream.emits(tokens)
-      }
+  private def emitTokens[F[_]]: Pipe[F, BatchAfterTransform, Unique.Token] =
+    _.flatMap { batch =>
+      Stream.emits(batch.tokens)
     }
-  }
 
   private def fastGetByIndex[A](items: IndexedSeq[A], index: Long): A = items(index.toInt)
 

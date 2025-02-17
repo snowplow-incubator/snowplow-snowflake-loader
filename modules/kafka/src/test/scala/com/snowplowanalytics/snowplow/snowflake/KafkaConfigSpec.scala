@@ -61,8 +61,9 @@ class KafkaConfigSpec extends Specification with CatsEffect {
 object KafkaConfigSpec {
   private val minimalConfig = Config[KafkaSourceConfig, KafkaSinkConfig](
     input = KafkaSourceConfig(
-      topicName        = "sp-dev-enriched",
-      bootstrapServers = "localhost:9092",
+      topicName             = "sp-dev-enriched",
+      bootstrapServers      = "localhost:9092",
+      debounceCommitOffsets = 10.seconds,
       consumerConf = Map(
         "group.id" -> "snowplow-snowflake-loader",
         "allow.auto.create.topics" -> "false",
@@ -142,8 +143,9 @@ object KafkaConfigSpec {
    */
   private val extendedConfig = Config[KafkaSourceConfig, KafkaSinkConfig](
     input = KafkaSourceConfig(
-      topicName        = "sp-dev-enriched",
-      bootstrapServers = "localhost:9092",
+      topicName             = "sp-dev-enriched",
+      bootstrapServers      = "localhost:9092",
+      debounceCommitOffsets = 10.seconds,
       consumerConf = Map(
         "group.id" -> "snowplow-snowflake-loader",
         "enable.auto.commit" -> "false",
