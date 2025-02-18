@@ -12,6 +12,7 @@ package com.snowplowanalytics.snowplow.snowflake.processing
 
 import cats.effect.IO
 import cats.effect.testing.specs2.CatsEffect
+import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.snowflake.{MockEnvironment, RuntimeService}
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.{Action, Mocks, Response}
@@ -22,6 +23,8 @@ import org.specs2.Specification
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
+import java.time.Instant
+import scala.concurrent.duration.DurationLong
 
 class ProcessingSpec extends Specification with CatsEffect {
   import ProcessingSpec._
@@ -40,9 +43,12 @@ class ProcessingSpec extends Specification with CatsEffect {
     Mark app as unhealthy when writing to the Channel fails SDK internal error exception $e10
   """
 
-  def e1 =
-    runTest(inputEvents(count = 2, good)) { case (inputs, control) =>
+  def e1 = {
+    val collectorTstamp = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime     = Instant.parse("2023-10-24T10:00:42.123Z")
+    val io = runTest(inputEvents(count = 2, good(optCollectorTstamp = Option(collectorTstamp)))) { case (inputs, control) =>
       for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
       } yield state should beEqualTo(
@@ -50,12 +56,15 @@ class ProcessingSpec extends Specification with CatsEffect {
           Action.InitEventsTable,
           Action.OpenedChannel,
           Action.WroteRowsToSnowflake(4),
+          Action.SetE2ELatencyMetric(42123.millis),
           Action.AddedGoodCountMetric(4),
           Action.AddedBadCountMetric(0),
           Action.Checkpointed(List(inputs(0).ack, inputs(1).ack))
         )
       )
     }
+    TestControl.executeEmbed(io)
+  }
 
   def e2 =
     runTest(inputEvents(count = 3, badlyFormatted)) { case (inputs, control) =>
@@ -75,14 +84,17 @@ class ProcessingSpec extends Specification with CatsEffect {
     }
 
   def e3 = {
+    val collectorTstamp = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime     = Instant.parse("2023-10-24T10:00:42.123Z")
     val toInputs = for {
       bads <- inputEvents(count = 3, badlyFormatted)
-      goods <- inputEvents(count = 3, good)
+      goods <- inputEvents(count = 3, good(optCollectorTstamp = Option(collectorTstamp)))
     } yield bads.zip(goods).map { case (bad, good) =>
       TokenedEvents(bad.events ++ good.events, good.ack)
     }
-    runTest(toInputs) { case (inputs, control) =>
+    val io = runTest(toInputs) { case (inputs, control) =>
       for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
       } yield state should beEqualTo(
@@ -90,6 +102,7 @@ class ProcessingSpec extends Specification with CatsEffect {
           Action.InitEventsTable,
           Action.OpenedChannel,
           Action.WroteRowsToSnowflake(6),
+          Action.SetE2ELatencyMetric(42123.millis),
           Action.SentToBad(6),
           Action.AddedGoodCountMetric(6),
           Action.AddedBadCountMetric(6),
@@ -97,9 +110,12 @@ class ProcessingSpec extends Specification with CatsEffect {
         )
       )
     }
+    TestControl.executeEmbed(io)
   }
 
   def e4 = {
+    val collectorTstamp = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime     = Instant.parse("2023-10-24T10:00:42.123Z")
     val mocks = Mocks.default.copy(
       channelResponses = List(
         Response.Success(
@@ -112,9 +128,9 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(Channel.WriteResult.WriteFailures(Nil))
       )
     )
-
-    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
+    val io = runTest(inputEvents(count = 1, good(optCollectorTstamp = Option(collectorTstamp))), mocks) { case (inputs, control) =>
       for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
       } yield state should beEqualTo(
@@ -126,15 +142,19 @@ class ProcessingSpec extends Specification with CatsEffect {
           Action.AlterTableAddedColumns(List("unstruct_event_xyz_1", "contexts_abc_2")),
           Action.OpenedChannel,
           Action.WroteRowsToSnowflake(1),
+          Action.SetE2ELatencyMetric(42123.millis),
           Action.AddedGoodCountMetric(2),
           Action.AddedBadCountMetric(0),
           Action.Checkpointed(List(inputs(0).ack))
         )
       )
     }
+    TestControl.executeEmbed(io)
   }
 
   def e5 = {
+    val collectorTstamp = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime     = Instant.parse("2023-10-24T10:00:42.123Z")
     val mocks = Mocks.default.copy(
       channelResponses = List(
         Response.Success(
@@ -147,9 +167,9 @@ class ProcessingSpec extends Specification with CatsEffect {
         Response.Success(Channel.WriteResult.WriteFailures(Nil))
       )
     )
-
-    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
+    val io = runTest(inputEvents(count = 1, good(optCollectorTstamp = Option(collectorTstamp))), mocks) { case (inputs, control) =>
       for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
       } yield state should beEqualTo(
@@ -157,6 +177,7 @@ class ProcessingSpec extends Specification with CatsEffect {
           Action.InitEventsTable,
           Action.OpenedChannel,
           Action.WroteRowsToSnowflake(1),
+          Action.SetE2ELatencyMetric(42123.millis),
           Action.SentToBad(1),
           Action.AddedGoodCountMetric(1),
           Action.AddedBadCountMetric(1),
@@ -164,6 +185,7 @@ class ProcessingSpec extends Specification with CatsEffect {
         )
       )
     }
+    TestControl.executeEmbed(io)
   }
 
   def e6 = {
@@ -180,7 +202,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       )
     )
 
-    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
+    runTest(inputEvents(count = 1, good()), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.handleError(_ => ())
         state <- control.state.get
@@ -196,15 +218,17 @@ class ProcessingSpec extends Specification with CatsEffect {
   }
 
   def e7 = {
+    val collectorTstamp = Instant.parse("2023-10-24T10:00:00.000Z")
+    val processTime     = Instant.parse("2023-10-24T10:00:42.123Z")
     val mocks = Mocks.default.copy(
       channelResponses = List(
         Response.Success(Channel.WriteResult.ChannelIsInvalid),
         Response.Success(Channel.WriteResult.WriteFailures(Nil))
       )
     )
-
-    runTest(inputEvents(count = 1, good), mocks) { case (inputs, control) =>
+    val io = runTest(inputEvents(count = 1, good(optCollectorTstamp = Option(collectorTstamp))), mocks) { case (inputs, control) =>
       for {
+        _ <- IO.sleep(processTime.toEpochMilli.millis)
         _ <- Processing.stream(control.environment).compile.drain
         state <- control.state.get
       } yield state should beEqualTo(
@@ -214,12 +238,14 @@ class ProcessingSpec extends Specification with CatsEffect {
           Action.ClosedChannel,
           Action.OpenedChannel,
           Action.WroteRowsToSnowflake(2),
+          Action.SetE2ELatencyMetric(42123.millis),
           Action.AddedGoodCountMetric(2),
           Action.AddedBadCountMetric(0),
           Action.Checkpointed(List(inputs(0).ack))
         )
       )
     }
+    TestControl.executeEmbed(io)
   }
 
   def e8 = {
@@ -246,7 +272,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       channelResponses = List(Response.ExceptionThrown(new RuntimeException("Some error when writing to the Channel")))
     )
 
-    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
+    runTest(inputEvents(count = 1, good()), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.voidError
         state <- control.state.get
@@ -273,7 +299,7 @@ class ProcessingSpec extends Specification with CatsEffect {
       )
     )
 
-    runTest(inputEvents(count = 1, good), mocks) { case (_, control) =>
+    runTest(inputEvents(count = 1, good()), mocks) { case (_, control) =>
       for {
         _ <- Processing.stream(control.environment).compile.drain.voidError
         state <- control.state.get
@@ -312,12 +338,13 @@ object ProcessingSpec {
       .compile
       .toList
 
-  def good: IO[TokenedEvents] =
+  def good(optCollectorTstamp: Option[Instant] = None): IO[TokenedEvents] =
     for {
       ack <- IO.unique
       eventId1 <- IO.randomUUID
       eventId2 <- IO.randomUUID
-      collectorTstamp <- IO.realTimeInstant
+      now <- IO.realTimeInstant
+      collectorTstamp = optCollectorTstamp.fold(now)(identity)
     } yield {
       val event1 = Event.minimal(eventId1, collectorTstamp, "0.0.0", "0.0.0")
       val event2 = Event.minimal(eventId2, collectorTstamp, "0.0.0", "0.0.0")
