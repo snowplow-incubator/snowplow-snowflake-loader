@@ -20,8 +20,10 @@ import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 
+import scala.concurrent.duration.DurationLong
 import java.nio.charset.StandardCharsets
 import java.time.OffsetDateTime
+import java.time.Instant
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
@@ -53,7 +55,8 @@ object Processing {
     transformFailures: List[BadRow],
     countBytes: Long,
     countItems: Int,
-    token: Unique.Token
+    token: Unique.Token,
+    earliestCollectorTstamp: Option[Instant]
   )
 
   type EventWithTransform = (Event, Map[String, AnyRef])
@@ -78,7 +81,8 @@ object Processing {
     origBatchBytes: Long,
     origBatchCount: Int,
     badAccumulated: ListOfList[BadRow],
-    tokens: Vector[Unique.Token]
+    tokens: Vector[Unique.Token],
+    earliestCollectorTstamp: Option[Instant]
   )
 
   /**
@@ -122,10 +126,24 @@ object Processing {
     in.through(parseAndTransform(env, badProcessor))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
+      .through(setE2ELatencyMetric(env))
       .through(sendFailedEvents(env, badProcessor))
       .through(sendMetrics(env))
       .through(emitTokens)
   }
+
+  private def setE2ELatencyMetric[F[_]: Sync](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
+    _.evalTap {
+      _.earliestCollectorTstamp match {
+        case Some(t) =>
+          for {
+            now <- Sync[F].realTime
+            e2eLatency = now - t.toEpochMilli.millis
+            _ <- env.metrics.setE2ELatency(e2eLatency)
+          } yield ()
+        case None => Sync[F].unit
+      }
+    }
 
   private def parseAndTransform[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, TransformedBatch] =
     _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token) =>
@@ -142,7 +160,8 @@ object Processing {
         now <- Sync[F].realTimeInstant
         loadTstamp = SnowflakeCaster.timestampValue(now)
         (transformBad, transformed) <- transformBatch(badProcessor, loadTstamp, events, env.schemasToSkip)
-      } yield TransformedBatch(transformed, transformBad, badRows, numBytes, chunk.size, token)
+        earliestCollectorTstamp = events.view.map(_.collector_tstamp).minOption
+      } yield TransformedBatch(transformed, transformBad, badRows, numBytes, chunk.size, token, earliestCollectorTstamp)
     }
 
   private def transformBatch[F[_]: Sync](
@@ -361,7 +380,8 @@ object Processing {
           origBatchBytes = b.origBatchBytes + a.countBytes,
           origBatchCount = b.origBatchCount + a.countItems,
           badAccumulated = b.badAccumulated.prepend(a.parseFailures).prepend(a.transformFailures),
-          tokens         = b.tokens :+ a.token
+          tokens         = b.tokens :+ a.token,
+          chooseEarliestTstamp(a.earliestCollectorTstamp, b.earliestCollectorTstamp)
         )
 
       def single(a: TransformedBatch): BatchAfterTransform =
@@ -370,11 +390,20 @@ object Processing {
           a.countBytes,
           a.countItems,
           ListOfList.ofLists(a.parseFailures, a.transformFailures),
-          Vector(a.token)
+          Vector(a.token),
+          a.earliestCollectorTstamp
         )
 
       def weightOf(a: TransformedBatch): Long =
         a.countBytes
     }
+
+  private def chooseEarliestTstamp(o1: Option[Instant], o2: Option[Instant]): Option[Instant] =
+    (o1, o2)
+      .mapN { case (t1, t2) =>
+        if (t1.isBefore(t2)) t1 else t2
+      }
+      .orElse(o1)
+      .orElse(o2)
 
 }
