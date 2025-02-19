@@ -45,7 +45,7 @@ object SnowflakeRetrying {
       // Snowflake returns a 513 HTTP status code if you try to connect to a host that does not exist
       "Unrecognized Snowflake account name or host name"
     case _: SecurityException =>
-      "Unauthorized: Invalid user name or public/private key pair"
+      "Unauthorized: Invalid user name or invalid public/private key pair or mis-configured network policies"
     case sql: java.sql.SQLException if Set(2003, 2043).contains(sql.getErrorCode) =>
       // Various known error codes for object does not exist or not authorized to view it
       sql.show
