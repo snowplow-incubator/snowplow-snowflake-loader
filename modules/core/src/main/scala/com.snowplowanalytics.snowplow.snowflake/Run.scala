@@ -27,7 +27,7 @@ import java.nio.file.Path
 
 object Run {
 
-  private implicit def logger[F[_]: Sync] = Slf4jLogger.getLogger[F]
+  private implicit def logger[F[_]: Sync]: Logger[F] = Slf4jLogger.getLogger[F]
 
   def fromCli[F[_]: Async, SourceConfig: Decoder, SinkConfig: Decoder](
     appInfo: AppInfo,
