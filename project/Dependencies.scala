@@ -22,17 +22,19 @@ object Dependencies {
 
     // java
     val slf4j     = "2.0.7"
-    val azureSdk  = "1.15.1"
+    val azureSdk  = "1.15.3"
     val sentry    = "6.25.2"
-    val snowflake = "3.0.0"
+    val snowflake = "3.0.1"
+    val sfJDBC    = "3.22.0" // Version override
     val jaxb      = "2.3.1"
     val awsSdk2   = "2.30.17"
-    val netty     = "4.1.100.Final" // Version override
+    val netty     = "4.1.118.Final" // Version override
     val reactor   = "1.0.39" // Version override
     val snappy    = "1.1.10.4" // Version override
     val nimbusJwt = "9.37.2" // Version override
     val jackson   = "2.15.0" // Version override
     val protobuf  = "3.25.5" // Version override
+    val jsonSmart = "2.5.2" // Version override
 
     // Snowplow
     val streams = "0.11.0"
@@ -54,6 +56,7 @@ object Dependencies {
   val azureIdentity   = "com.azure"                  % "azure-identity"       % V.azureSdk
   val sentry          = "io.sentry"                  % "sentry"               % V.sentry
   val snowflakeIngest = "net.snowflake"              % "snowflake-ingest-sdk" % V.snowflake
+  val snowflakeJDBC   = "net.snowflake"              % "snowflake-jdbc"       % V.sfJDBC
   val jaxb            = "javax.xml.bind"             % "jaxb-api"             % V.jaxb
   val stsSdk2         = "software.amazon.awssdk"     % "sts"                  % V.awsSdk2
   val nettyCodecHttp  = "io.netty"                   % "netty-codec-http2"    % V.netty
@@ -63,6 +66,7 @@ object Dependencies {
   val jacksonCore     = "com.fasterxml.jackson.core" % "jackson-core"         % V.jackson
   val protobufJava    = "com.google.protobuf"        % "protobuf-java"        % V.protobuf
   val protobufUtil    = "com.google.protobuf"        % "protobuf-java-util"   % V.protobuf
+  val jsonSmart       = "net.minidev"                % "json-smart"           % V.jsonSmart
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -84,6 +88,7 @@ object Dependencies {
     decline,
     sentry,
     snowflakeIngest,
+    snowflakeJDBC,
     doobie,
     circeGenericExtra,
     jacksonCore,
@@ -102,6 +107,7 @@ object Dependencies {
     reactorNetty,
     snappyJava,
     nimbusJoseJwt,
+    jsonSmart,
     specs2,
     catsEffectSpecs2
   )
