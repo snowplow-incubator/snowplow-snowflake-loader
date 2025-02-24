@@ -1,3 +1,12 @@
+Version 0.4.0 (2025-02-24)
+--------------------------
+Upgrade dependencies
+Java 21 for docker images (#65)
+Update error message for misconfigured network rules (#70)
+Add e2e_latency_millis metric (#69)
+Bump common-streams to 0.11.0 (#68)
+Bump common-streams to 0.10.0 (#66)
+
 Version 0.3.0 (2024-11-26)
 --------------------------
 Final upgrades for 0.3.0 (#60)
