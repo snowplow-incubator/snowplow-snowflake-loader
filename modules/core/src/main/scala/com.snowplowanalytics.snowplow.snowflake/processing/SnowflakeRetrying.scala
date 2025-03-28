@@ -15,6 +15,7 @@ import cats.effect.Sync
 import cats.implicits._
 import retry._
 import net.snowflake.ingest.connection.IngestResponseException
+import net.snowflake.client.jdbc.SnowflakeSQLException
 
 import java.lang.SecurityException
 import scala.util.matching.Regex
@@ -35,6 +36,10 @@ object SnowflakeRetrying {
 
   /** Is an error associated with setting up Snowflake as a destination */
   private def isSetupError: PartialFunction[Throwable, String] = {
+    case sse: SnowflakeSQLException if sse.isEligibleSetupError =>
+      // if loader role is not granted to SYSADMIN, snowflake throws the below
+      // Table 'EVENTS' already exists, but current role has no privileges on it.
+      "Loader role has no privileges on events table. Role must be granted to SYSADMIN."
     case ire: IngestResponseException if ire.getErrorCode >= 400 && ire.getErrorCode < 500 =>
       val shown = ire.show
       if (shown.matches(""".*\bERR_TABLE_TYPE_NOT_SUPPORTED\b.*"""))
@@ -52,6 +57,13 @@ object SnowflakeRetrying {
     case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
       // Insufficient privileges
       sql.show
+  }
+
+  implicit class FilteredSnowflakeSQLException(val sse: SnowflakeSQLException) extends AnyVal {
+    def isEligibleSetupError: Boolean = {
+      lazy val pattern = "^SQL compilation error:\nTable '(\\w+)' already exists, but current role has no privileges on it.*".r
+      sse.getErrorCode === 3041 && sse.getSQLState === "42710" && pattern.matches(sse.getMessage)
+    }
   }
 
   private implicit def showSqlException: Show[java.sql.SQLException] = Show { sql =>
