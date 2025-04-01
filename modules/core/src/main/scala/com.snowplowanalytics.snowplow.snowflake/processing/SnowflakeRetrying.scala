@@ -49,7 +49,7 @@ object SnowflakeRetrying {
     case sql: java.sql.SQLException if Set(2003, 2043).contains(sql.getErrorCode) =>
       // Various known error codes for object does not exist or not authorized to view it
       sql.show
-    case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
+    case sql: java.sql.SQLException if Set(3001, 3041).contains(sql.getErrorCode) =>
       // Insufficient privileges
       sql.show
   }
