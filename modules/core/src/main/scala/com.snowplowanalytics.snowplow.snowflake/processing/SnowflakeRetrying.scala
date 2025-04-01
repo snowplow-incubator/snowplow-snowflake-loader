@@ -15,7 +15,6 @@ import cats.effect.Sync
 import cats.implicits._
 import retry._
 import net.snowflake.ingest.connection.IngestResponseException
-import net.snowflake.client.jdbc.SnowflakeSQLException
 
 import java.lang.SecurityException
 import scala.util.matching.Regex
