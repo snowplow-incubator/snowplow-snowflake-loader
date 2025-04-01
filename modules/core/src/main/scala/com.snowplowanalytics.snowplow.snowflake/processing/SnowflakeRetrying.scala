@@ -36,10 +36,6 @@ object SnowflakeRetrying {
 
   /** Is an error associated with setting up Snowflake as a destination */
   private def isSetupError: PartialFunction[Throwable, String] = {
-    case sse: SnowflakeSQLException if sse.isEligibleSetupError =>
-      // if loader role is not granted to SYSADMIN, snowflake throws the below
-      // Table 'EVENTS' already exists, but current role has no privileges on it.
-      "Loader role has no privileges on events table. Role must be granted to SYSADMIN."
     case ire: IngestResponseException if ire.getErrorCode >= 400 && ire.getErrorCode < 500 =>
       val shown = ire.show
       if (shown.matches(""".*\bERR_TABLE_TYPE_NOT_SUPPORTED\b.*"""))
@@ -54,16 +50,9 @@ object SnowflakeRetrying {
     case sql: java.sql.SQLException if Set(2003, 2043).contains(sql.getErrorCode) =>
       // Various known error codes for object does not exist or not authorized to view it
       sql.show
-    case sql: java.sql.SQLException if sql.getErrorCode === 3001 =>
+    case sql: java.sql.SQLException if Set(3001, 3041).contains(sql.getErrorCode) =>
       // Insufficient privileges
       sql.show
-  }
-
-  implicit class FilteredSnowflakeSQLException(val sse: SnowflakeSQLException) extends AnyVal {
-    def isEligibleSetupError: Boolean = {
-      lazy val pattern = "^SQL compilation error:\nTable '(\\w+)' already exists, but current role has no privileges on it.*".r
-      sse.getErrorCode === 3041 && sse.getSQLState === "42710" && pattern.matches(sse.getMessage)
-    }
   }
 
   private implicit def showSqlException: Show[java.sql.SQLException] = Show { sql =>
