@@ -1,3 +1,8 @@
+Version 0.4.1 (2025-04-07)
+--------------------------
+Upgrade snowflake dependencies (#77)
+Add setup alert for no privileges on events table (#75)
+
 Version 0.4.0 (2025-02-24)
 --------------------------
 Upgrade dependencies
