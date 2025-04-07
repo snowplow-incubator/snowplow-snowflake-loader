@@ -24,8 +24,8 @@ object Dependencies {
     val slf4j     = "2.0.7"
     val azureSdk  = "1.15.3"
     val sentry    = "6.25.2"
-    val snowflake = "3.0.1"
-    val sfJDBC    = "3.22.0" // Version override
+    val snowflake = "3.1.2"
+    val sfJDBC    = "3.23.2" // Version override
     val jaxb      = "2.3.1"
     val awsSdk2   = "2.30.17"
     val netty     = "4.1.118.Final" // Version override
