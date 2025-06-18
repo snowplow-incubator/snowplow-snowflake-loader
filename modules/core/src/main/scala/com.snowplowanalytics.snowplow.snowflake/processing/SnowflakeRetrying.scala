@@ -35,15 +35,16 @@ object SnowflakeRetrying {
 
   /** Is an error associated with setting up Snowflake as a destination */
   private def isSetupError: PartialFunction[Throwable, String] = {
+    case ire: IngestResponseException if ire.getErrorCode === 513 || ire.getErrorCode === 404 =>
+      // Snowflake returns a 404 HTTP status code if you try to connect to a host that does not exist.
+      // However, it was returning 513 in this case previously therefore leaving that as well just in case.
+      "Unrecognized Snowflake account name or host name"
     case ire: IngestResponseException if ire.getErrorCode >= 400 && ire.getErrorCode < 500 =>
       val shown = ire.show
       if (shown.matches(""".*\bERR_TABLE_TYPE_NOT_SUPPORTED\b.*"""))
         "Table must not be in a transient database or transient schema: Snowflake streaming ingest SDK only supports permanent tables"
       else
         shown
-    case ire: IngestResponseException if ire.getErrorCode === 513 =>
-      // Snowflake returns a 513 HTTP status code if you try to connect to a host that does not exist
-      "Unrecognized Snowflake account name or host name"
     case _: SecurityException =>
       "Unauthorized: Invalid user name or invalid public/private key pair or mis-configured network policies"
     case sql: java.sql.SQLException if Set(2003, 2043).contains(sql.getErrorCode) =>
