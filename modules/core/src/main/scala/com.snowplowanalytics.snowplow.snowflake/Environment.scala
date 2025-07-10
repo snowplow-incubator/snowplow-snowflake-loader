@@ -65,10 +65,10 @@ object Environment {
       tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries))
       cpuParallelism    = chooseCpuParallelism(config)
       uploadParallelism = chooseUploadParallelism(config)
+      channelOpener <- Channel.opener(config.output.good, config.retries, appHealth)
       channelProviders <- Vector.range(0, uploadParallelism).traverse { index =>
                             for {
-                              channelOpener <- Channel.opener(config.output.good, config.retries, appHealth, index)
-                              channelProvider <- Channel.provider(channelOpener, config.retries, appHealth)
+                              channelProvider <- Channel.provider(channelOpener, config.retries, appHealth, index)
                             } yield channelProvider
                           }
     } yield Environment(

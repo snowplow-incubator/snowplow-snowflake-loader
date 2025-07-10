@@ -140,11 +140,17 @@
       "delay": "30 seconds"
     }
 
-    # -- Configures exponential backoff  errors that are likely to be transient.
+    # -- Configures exponential backoff errors that are likely to be transient.
     # -- Examples include server errors and network errors
     "transientErrors": {
       "delay": "1 second"
       "attempts": 5
+    }
+
+    # -- Configures a delay in between flushing events to snowflake and fetching the latest offset
+    # -- token from snowflake to check the events are fully ingested.
+    "checkCommittedOffset": {
+      "delay": "100 millis"
     }
   }
 

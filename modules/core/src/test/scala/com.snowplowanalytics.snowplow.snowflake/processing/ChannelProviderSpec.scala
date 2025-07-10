@@ -39,7 +39,7 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   """
 
   def e1 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth).use_
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, 42).use_
 
     for {
       _ <- io
@@ -48,15 +48,15 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   }
 
   def e2 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth).use { provider =>
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, 42).use { provider =>
       provider.opened.use_
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameHealthyForSetup,
       Action.BecameHealthy(RuntimeService.Snowflake),
-      Action.ClosedChannel
+      Action.ClosedChannel(42)
     )
 
     for {
@@ -66,17 +66,17 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   }
 
   def e3 = control.flatMap { c =>
-    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth).use { provider =>
+    val io = Channel.provider(c.channelOpener, retriesConfig, c.appHealth, 42).use { provider =>
       provider.opened.use { _ =>
         goBOOM
       }
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameHealthyForSetup,
       Action.BecameHealthy(RuntimeService.Snowflake),
-      Action.ClosedChannel
+      Action.ClosedChannel(42)
     )
 
     for {
@@ -88,22 +88,22 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e4 = control.flatMap { c =>
     // An channel opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] =
-        c.channelOpener.open *> raiseForSetupError
+      def open(index: Int): IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open(index) *> raiseForSetupError
     }
 
-    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth).use { provider =>
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, 42).use { provider =>
       provider.opened.use_
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(0L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(30L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(90L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(210L)
     )
 
@@ -120,24 +120,24 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e5 = control.flatMap { c =>
     // An channel opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] =
-        c.channelOpener.open *> goBOOM
+      def open(index: Int): IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open(index) *> goBOOM
     }
 
-    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth).use { provider =>
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, 42).use { provider =>
       provider.opened.use_
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake)
     )
 
@@ -152,12 +152,12 @@ class ChannelProviderSpec extends Specification with CatsEffect {
   def e6 = control.flatMap { c =>
     // An opener that throws an exception when trying to open a channel
     val throwingOpener = new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] =
-        c.channelOpener.open *> raiseForSetupError
+      def open(index: Int): IO[Channel.CloseableChannel[IO]] =
+        c.channelOpener.open(index: Int) *> raiseForSetupError
     }
 
     // Three concurrent fibers wanting to open the channel:
-    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth).use { provider =>
+    val io = Channel.provider(throwingOpener, retriesConfig, c.appHealth, 42).use { provider =>
       Supervisor[IO](await = false).use { supervisor =>
         supervisor.supervise(provider.opened.surround(IO.never)) *>
           supervisor.supervise(provider.opened.surround(IO.never)) *>
@@ -167,13 +167,13 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(0L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(30L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(90L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(210L)
     )
 
@@ -191,29 +191,29 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     // An channel opener that throws an exception *once* and is healthy thereafter
     val throwingOnceOpener = Ref[IO].of(false).map { hasThrownException =>
       new Channel.Opener[IO] {
-        def open: IO[Channel.CloseableChannel[IO]] =
+        def open(index: Int): IO[Channel.CloseableChannel[IO]] =
           hasThrownException.get.flatMap {
             case false =>
-              hasThrownException.set(true) *> c.channelOpener.open *> raiseForSetupError
+              hasThrownException.set(true) *> c.channelOpener.open(index) *> raiseForSetupError
             case true =>
-              c.channelOpener.open
+              c.channelOpener.open(index)
           }
       }
     }
 
     val io = throwingOnceOpener.flatMap { channelOpener =>
-      Channel.provider(channelOpener, retriesConfig, c.appHealth).use { provider =>
+      Channel.provider(channelOpener, retriesConfig, c.appHealth, 42).use { provider =>
         provider.opened.use_
       }
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.SentAlert(0L),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameHealthyForSetup,
       Action.BecameHealthy(RuntimeService.Snowflake),
-      Action.ClosedChannel
+      Action.ClosedChannel(42)
     )
 
     val test = for {
@@ -228,29 +228,29 @@ class ChannelProviderSpec extends Specification with CatsEffect {
     // An channel opener that throws an exception *once* and is healthy thereafter
     val throwingOnceOpener = Ref[IO].of(false).map { hasThrownException =>
       new Channel.Opener[IO] {
-        def open: IO[Channel.CloseableChannel[IO]] =
+        def open(index: Int): IO[Channel.CloseableChannel[IO]] =
           hasThrownException.get.flatMap {
             case false =>
-              hasThrownException.set(true) *> c.channelOpener.open *> goBOOM
+              hasThrownException.set(true) *> c.channelOpener.open(index) *> goBOOM
             case true =>
-              c.channelOpener.open
+              c.channelOpener.open(index)
           }
       }
     }
 
     val io = throwingOnceOpener.flatMap { channelOpener =>
-      Channel.provider(channelOpener, retriesConfig, c.appHealth).use { provider =>
+      Channel.provider(channelOpener, retriesConfig, c.appHealth, 42).use { provider =>
         provider.opened.use_
       }
     }
 
     val expectedState = Vector(
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameUnhealthy(RuntimeService.Snowflake),
-      Action.OpenedChannel,
+      Action.OpenedChannel(42),
       Action.BecameHealthyForSetup,
       Action.BecameHealthy(RuntimeService.Snowflake),
-      Action.ClosedChannel
+      Action.ClosedChannel(42)
     )
 
     val test = for {
@@ -268,8 +268,8 @@ object ChannelProviderSpec {
   sealed trait Action
 
   object Action {
-    case object OpenedChannel extends Action
-    case object ClosedChannel extends Action
+    case class OpenedChannel(index: Int) extends Action
+    case class ClosedChannel(index: Int) extends Action
     case class SentAlert(timeSentSeconds: Long) extends Action
     case class BecameUnhealthy(service: RuntimeService) extends Action
     case class BecameHealthy(service: RuntimeService) extends Action
@@ -282,7 +282,11 @@ object ChannelProviderSpec {
     appHealth: AppHealth.Interface[IO, Alert, RuntimeService]
   )
 
-  def retriesConfig = Config.Retries(Retrying.Config.ForSetup(30.seconds), Retrying.Config.ForTransient(1.second, 5))
+  def retriesConfig = Config.Retries(
+    Retrying.Config.ForSetup(30.seconds),
+    Retrying.Config.ForTransient(1.second, 5),
+    Config.CheckCommittedOffsetRetries(100.millis)
+  )
 
   def control: IO[Control] =
     for {
@@ -306,15 +310,16 @@ object ChannelProviderSpec {
 
   private def testChannelOpener(state: Ref[IO, Vector[Action]]): Channel.Opener[IO] =
     new Channel.Opener[IO] {
-      def open: IO[Channel.CloseableChannel[IO]] =
-        state.update(_ :+ Action.OpenedChannel).as(testCloseableChannel(state))
+      def open(index: Int): IO[Channel.CloseableChannel[IO]] =
+        state.update(_ :+ Action.OpenedChannel(index)).as(testCloseableChannel(state, index))
     }
 
-  private def testCloseableChannel(state: Ref[IO, Vector[Action]]): Channel.CloseableChannel[IO] = new Channel.CloseableChannel[IO] {
-    def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] = IO.pure(Channel.WriteResult.WriteFailures(Nil))
+  private def testCloseableChannel(state: Ref[IO, Vector[Action]], index: Int): Channel.CloseableChannel[IO] =
+    new Channel.CloseableChannel[IO] {
+      def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] = IO.pure(Channel.WriteResult.WriteFailures(Nil))
 
-    def close: IO[Unit] = state.update(_ :+ Action.ClosedChannel)
-  }
+      def close: IO[Unit] = state.update(_ :+ Action.ClosedChannel(index))
+    }
 
   // Raise an exception in an IO
   def goBOOM[A]: IO[A] = IO.raiseError(new RuntimeException("boom!")).adaptError { t =>
