@@ -66,6 +66,10 @@ object BuildSettings {
       // doesn't follow Early Semver version scheme that is recommended for Scala libraries.
       // Therefore, version conflict reports for this library are ignored.
       "com.github.luben" % "zstd-jni" % VersionScheme.Always
+    ),
+
+    javaOptions ++= Seq(
+      "-XX:ActiveProcessorCount=1"
     )
   )
 

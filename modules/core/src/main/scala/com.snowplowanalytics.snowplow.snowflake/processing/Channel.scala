@@ -109,7 +109,7 @@ object Channel {
       client <- createClient(config, retriesConfig, appHealth)
     } yield new Opener[F] {
       def open(index: Int): F[CloseableChannel[F]] =
-        createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, _))
+        createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, _, index))
     }
 
   def provider[F[_]: Async](
@@ -136,20 +136,27 @@ object Channel {
     Resource.makeFull(make)(_.close)
   }
 
-  private def impl[F[_]: Async](config: Config.CheckCommittedOffsetRetries, channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
+  private def impl[F[_]: Async](
+    config: Config.CheckCommittedOffsetRetries,
+    channel: SnowflakeStreamingIngestChannel,
+    index: Int,
+  ): CloseableChannel[F] =
     new CloseableChannel[F] {
 
       def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
+        val fixedRows = rows.map(_ + ("v_tracker" -> s"channel-$index"))
         val attempt: F[WriteResult] = for {
           offsetToken <- Sync[F].monotonic.map(_.toNanos.toString)
-          response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, offsetToken.toString))
+          response <- Sync[F].blocking(channel.insertRows(fixedRows.map(_.asJava).asJava, offsetToken.toString))
+          _ <- Logger[F].info(s"Flushing channel $index at position $offsetToken")
           _ <- flushChannel[F](channel)
+          _ <- Logger[F].info(s"Finished flushing channel $index at position $offsetToken")
           _ <- waitForOffsetToken(config, channel, offsetToken)
         } yield WriteResult.WriteFailures(parseResponse(response))
 
-        attempt.recover {
+        attempt.recoverWith {
           case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
-            WriteResult.ChannelIsInvalid
+            Logger[F].info(s"Channel $index received invalid channel exception").as(WriteResult.ChannelIsInvalid)
         }
       }
 
@@ -162,10 +169,10 @@ object Channel {
               }
             }
             .void
-            .recover {
+            .recoverWith {
               case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
                 // We have already handled errors associated with invalid channel
-                ()
+                Logger[F].info(s"Channel $index received invalid channel exception upon closing")
             }
     }
 
