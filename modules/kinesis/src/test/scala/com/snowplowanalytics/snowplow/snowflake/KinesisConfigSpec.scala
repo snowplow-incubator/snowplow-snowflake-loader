@@ -111,8 +111,9 @@ object KinesisConfigSpec {
     ),
     cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
-      setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
-      transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
+      setupErrors          = Retrying.Config.ForSetup(delay = 30.seconds),
+      transientErrors      = Retrying.Config.ForTransient(delay = 1.second, attempts = 5),
+      checkCommittedOffset = Config.CheckCommittedOffsetRetries(delay = 100.millis)
     ),
     skipSchemas = List.empty,
     telemetry = Telemetry.Config(
@@ -191,8 +192,9 @@ object KinesisConfigSpec {
     ),
     cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
-      setupErrors     = Retrying.Config.ForSetup(delay = 30.seconds),
-      transientErrors = Retrying.Config.ForTransient(delay = 1.second, attempts = 5)
+      setupErrors          = Retrying.Config.ForSetup(delay = 30.seconds),
+      transientErrors      = Retrying.Config.ForTransient(delay = 1.second, attempts = 5),
+      checkCommittedOffset = Config.CheckCommittedOffsetRetries(delay = 100.millis)
     ),
     skipSchemas = List(
       SchemaCriterion.parse("iglu:com.acme/skipped1/jsonschema/1-0-0").get,
