@@ -48,6 +48,7 @@ object Dependencies {
   val http4sCirce       = "org.http4s"   %% "http4s-circe"         % V.http4s
   val decline           = "com.monovore" %% "decline-effect"       % V.decline
   val circeGenericExtra = "io.circe"     %% "circe-generic-extras" % V.circe
+  val circeLiteral      = "io.circe"     %% "circe-literal" % V.circe
   val betterMonadicFor  = "com.olegpy"   %% "better-monadic-for"   % V.betterMonadicFor
   val doobie            = "org.tpolecat" %% "doobie-core"          % V.doobie
 
@@ -95,7 +96,8 @@ object Dependencies {
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
-    slf4j % Test
+    slf4j,
+    circeLiteral
   )
 
   val kafkaDependencies = Seq(

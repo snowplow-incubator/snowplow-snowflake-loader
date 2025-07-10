@@ -61,7 +61,7 @@ object Run {
       }
   }
 
-  private def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
+  def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
     appInfo: AppInfo,
     toSource: SourceConfig => F[SourceAndAck[F]],
     toBadSink: SinkConfig => Resource[F, Sink[F]],

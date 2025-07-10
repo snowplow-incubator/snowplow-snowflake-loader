@@ -10,7 +10,7 @@
 
 package com.snowplowanalytics.snowplow.snowflake.processing
 
-import cats.effect.{Async, Poll, Resource, Sync}
+import cats.effect.{Async, Poll, Ref, Resource, Sync}
 import cats.implicits._
 import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
@@ -108,8 +108,9 @@ object Channel {
   ): Resource[F, Opener[F]] =
     for {
       client <- createClient(config, retriesConfig, appHealth)
+      counter <- Resource.eval(Ref[F].of(0))
     } yield new Opener[F] {
-      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F])
+      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F](_, index, counter))
     }
 
   def provider[F[_]: Async](
@@ -134,19 +135,38 @@ object Channel {
     Resource.makeFull(make)(_.close)
   }
 
-  private def impl[F[_]: Async](channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
+  private def impl[F[_]: Async](
+    channel: SnowflakeStreamingIngestChannel,
+    index: Int,
+    counter: Ref[F, Int]
+  ): CloseableChannel[F] =
     new CloseableChannel[F] {
 
       def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
+        val fixedRows = rows.map(_ + ("v_tracker" -> s"channel-$index"))
         val attempt: F[WriteResult] = for {
-          response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
+          position <- counter.getAndUpdate(_ + 1)
+          response <- Sync[F].blocking(channel.insertRows(fixedRows.map(_.asJava).asJava, position.toString))
+          _ <- Logger[F].info(s"Flushing channel $index at position $position")
           _ <- flushChannel[F](channel)
+          _ <- Logger[F].info(s"Finished flushing channel $index at position $position")
+          _ <- Sync[F].blocking(channel.getLatestCommittedOffsetToken()).attempt.flatMap {
+                 case Right(token) =>
+                   Logger[F].info(s"Latest committed offset token of channel $index is $token")
+                 case Left(_) =>
+                   Logger[F].info(s"Caught exception checking latest offset token in channel $index")
+               }
           isValid <- Sync[F].delay(channel.isValid)
-        } yield if (isValid) WriteResult.WriteFailures(parseResponse(response)) else WriteResult.ChannelIsInvalid
+          result <- if (isValid) {
+                      WriteResult.WriteFailures(parseResponse(response)).pure[F]
+                    } else {
+                      Logger[F].info(s"Channel $index reported as invalid").as(WriteResult.ChannelIsInvalid)
+                    }
+        } yield result
 
-        attempt.recover {
+        attempt.recoverWith {
           case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
-            WriteResult.ChannelIsInvalid
+            Logger[F].info(s"Channel $index received invalid channel exception").as(WriteResult.ChannelIsInvalid)
         }
       }
 
@@ -159,10 +179,10 @@ object Channel {
               }
             }
             .void
-            .recover {
+            .recoverWith {
               case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
                 // We have already handled errors associated with invalid channel
-                ()
+                Logger[F].info(s"Channel $index received invalid channel exception upon closing")
             }
     }
 
