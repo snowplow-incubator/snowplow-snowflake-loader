@@ -108,7 +108,7 @@ object KafkaConfigSpec {
     batching = Config.Batching(
       maxBytes                = 16000000,
       maxDelay                = 1.second,
-      uploadParallelismFactor = BigDecimal(2.5)
+      uploadParallelismFactor = BigDecimal(3.5)
     ),
     cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
@@ -192,7 +192,7 @@ object KafkaConfigSpec {
     batching = Config.Batching(
       maxBytes                = 16000000,
       maxDelay                = 1.second,
-      uploadParallelismFactor = BigDecimal(2.5)
+      uploadParallelismFactor = BigDecimal(3.5)
     ),
     cpuParallelismFactor = BigDecimal(0.75),
     retries = Config.Retries(
