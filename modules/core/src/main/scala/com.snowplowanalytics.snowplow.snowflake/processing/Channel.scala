@@ -15,7 +15,6 @@ import cats.implicits._
 import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
 import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, RuntimeService}
-import net.snowflake.ingest.streaming.internal.SnowsFlakePlowInterop
 import net.snowflake.ingest.streaming._
 import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
 import org.typelevel.log4cats.Logger
@@ -109,7 +108,7 @@ object Channel {
     for {
       client <- createClient(config, retriesConfig, appHealth)
     } yield new Opener[F] {
-      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, _))
+      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, client, _))
     }
 
   def provider[F[_]: Async](
@@ -134,14 +133,18 @@ object Channel {
     Resource.makeFull(make)(_.close)
   }
 
-  private def impl[F[_]: Async](config: Config.CheckCommittedOffsetRetries, channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
+  private def impl[F[_]: Async](
+    config: Config.CheckCommittedOffsetRetries,
+    client: SnowflakeStreamingIngestClient,
+    channel: SnowflakeStreamingIngestChannel
+  ): CloseableChannel[F] =
     new CloseableChannel[F] {
 
       def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
         val attempt: F[WriteResult] = for {
           offsetToken <- Sync[F].monotonic.map(_.toNanos.toString)
           response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, offsetToken.toString))
-          _ <- flushChannel[F](channel)
+          _ <- flushChannel[F](client)
           _ <- waitForOffsetToken(config, channel, offsetToken)
         } yield WriteResult.WriteFailures(parseResponse(response))
 
@@ -254,13 +257,10 @@ object Channel {
 
   /**
    * Flushes the channel
-   *
-   * The public interface of the Snowflake SDK does not tell us when the events are safely written
-   * to Snowflake. So we must cast it to an Internal class so we get access to the `flush()` method.
    */
-  private def flushChannel[F[_]: Async](channel: SnowflakeStreamingIngestChannel): F[Unit] =
+  private def flushChannel[F[_]: Async](client: SnowflakeStreamingIngestClient): F[Unit] =
     Async[F].fromCompletableFuture {
-      Async[F].delay(SnowsFlakePlowInterop.flushChannel(channel))
+      Async[F].delay(client.flush())
     }.void
 
 }

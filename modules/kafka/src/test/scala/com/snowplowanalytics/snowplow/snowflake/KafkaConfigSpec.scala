@@ -66,6 +66,7 @@ object KafkaConfigSpec {
       debounceCommitOffsets = 10.seconds,
       consumerConf = Map(
         "group.id" -> "snowplow-snowflake-loader",
+        "group.instance.id" -> "testWorkerId",
         "allow.auto.create.topics" -> "false",
         "auto.offset.reset" -> "latest",
         "security.protocol" -> "SASL_SSL",
@@ -149,6 +150,7 @@ object KafkaConfigSpec {
       debounceCommitOffsets = 10.seconds,
       consumerConf = Map(
         "group.id" -> "snowplow-snowflake-loader",
+        "group.instance.id" -> "testWorkerId",
         "enable.auto.commit" -> "false",
         "allow.auto.create.topics" -> "false",
         "auto.offset.reset" -> "earliest",

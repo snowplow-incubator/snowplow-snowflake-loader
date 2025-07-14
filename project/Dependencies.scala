@@ -21,23 +21,23 @@ object Dependencies {
     val doobie           = "1.0.0-RC4"
 
     // java
-    val slf4j     = "2.0.7"
-    val azureSdk  = "1.15.3"
-    val sentry    = "6.25.2"
-    val snowflake = "3.1.2"
-    val sfJDBC    = "3.23.2" // Version override
-    val jaxb      = "2.3.1"
-    val awsSdk2   = "2.30.17"
-    val netty     = "4.1.118.Final" // Version override
-    val reactor   = "1.0.39" // Version override
-    val snappy    = "1.1.10.4" // Version override
-    val nimbusJwt = "9.37.2" // Version override
-    val jackson   = "2.15.0" // Version override
-    val protobuf  = "3.25.5" // Version override
-    val jsonSmart = "2.5.2" // Version override
+    val slf4j       = "2.0.7"
+    val azureSdk    = "1.15.3"
+    val sentry      = "6.25.2"
+    val snowflake   = "4.1.0"
+    val sfJDBC      = "3.25.0"
+    val jaxb        = "2.3.1"
+    val awsSdk2     = "2.30.17"
+    val netty       = "4.1.118.Final" // Version override
+    val reactor     = "1.0.39" // Version override
+    val snappy      = "1.1.10.4" // Version override
+    val nimbusJwt   = "9.37.2" // Version override
+    val jsonSmart   = "2.5.2" // Version override
+    val commonsLang = "3.18.0" // Version override
+    val kafkaClient = "3.9.1" // Version override
 
     // Snowplow
-    val streams = "0.11.0"
+    val streams = "0.12.0"
 
     // tests
     val specs2           = "4.20.0"
@@ -52,21 +52,20 @@ object Dependencies {
   val doobie            = "org.tpolecat" %% "doobie-core"          % V.doobie
 
   // java
-  val slf4j           = "org.slf4j"                  % "slf4j-simple"         % V.slf4j
-  val azureIdentity   = "com.azure"                  % "azure-identity"       % V.azureSdk
-  val sentry          = "io.sentry"                  % "sentry"               % V.sentry
-  val snowflakeIngest = "net.snowflake"              % "snowflake-ingest-sdk" % V.snowflake
-  val snowflakeJDBC   = "net.snowflake"              % "snowflake-jdbc"       % V.sfJDBC
-  val jaxb            = "javax.xml.bind"             % "jaxb-api"             % V.jaxb
-  val stsSdk2         = "software.amazon.awssdk"     % "sts"                  % V.awsSdk2
-  val nettyCodecHttp  = "io.netty"                   % "netty-codec-http2"    % V.netty
-  val reactorNetty    = "io.projectreactor.netty"    % "reactor-netty-http"   % V.reactor
-  val snappyJava      = "org.xerial.snappy"          % "snappy-java"          % V.snappy
-  val nimbusJoseJwt   = "com.nimbusds"               % "nimbus-jose-jwt"      % V.nimbusJwt
-  val jacksonCore     = "com.fasterxml.jackson.core" % "jackson-core"         % V.jackson
-  val protobufJava    = "com.google.protobuf"        % "protobuf-java"        % V.protobuf
-  val protobufUtil    = "com.google.protobuf"        % "protobuf-java-util"   % V.protobuf
-  val jsonSmart       = "net.minidev"                % "json-smart"           % V.jsonSmart
+  val slf4j           = "org.slf4j"               % "slf4j-simple"         % V.slf4j
+  val azureIdentity   = "com.azure"               % "azure-identity"       % V.azureSdk
+  val sentry          = "io.sentry"               % "sentry"               % V.sentry
+  val snowflakeIngest = "net.snowflake"           % "snowflake-ingest-sdk" % V.snowflake
+  val snowflakeJDBC   = "net.snowflake"           % "snowflake-jdbc-thin"  % V.sfJDBC
+  val jaxb            = "javax.xml.bind"          % "jaxb-api"             % V.jaxb
+  val stsSdk2         = "software.amazon.awssdk"  % "sts"                  % V.awsSdk2
+  val nettyCodecHttp  = "io.netty"                % "netty-codec-http2"    % V.netty
+  val reactorNetty    = "io.projectreactor.netty" % "reactor-netty-http"   % V.reactor
+  val snappyJava      = "org.xerial.snappy"       % "snappy-java"          % V.snappy
+  val nimbusJoseJwt   = "com.nimbusds"            % "nimbus-jose-jwt"      % V.nimbusJwt
+  val jsonSmart       = "net.minidev"             % "json-smart"           % V.jsonSmart
+  val commonsLang     = "org.apache.commons"      % "commons-lang3"        % V.commonsLang
+  val kafkaClient     = "org.apache.kafka"        % "kafka-clients"        % V.kafkaClient
 
   val streamsCore = "com.snowplowanalytics" %% "streams-core"   % V.streams
   val kinesis     = "com.snowplowanalytics" %% "kinesis"        % V.streams
@@ -91,7 +90,7 @@ object Dependencies {
     snowflakeJDBC,
     doobie,
     circeGenericExtra,
-    jacksonCore,
+    commonsLang,
     specs2,
     catsEffectSpecs2,
     catsEffectTestkit,
@@ -100,6 +99,7 @@ object Dependencies {
 
   val kafkaDependencies = Seq(
     kafka,
+    kafkaClient,
     slf4j % Runtime,
     jaxb  % Runtime,
     azureIdentity,
@@ -114,8 +114,6 @@ object Dependencies {
 
   val pubsubDependencies = Seq(
     pubsub,
-    protobufJava,
-    protobufUtil,
     jaxb  % Runtime,
     slf4j % Runtime,
     specs2,
@@ -124,7 +122,6 @@ object Dependencies {
 
   val kinesisDependencies = Seq(
     kinesis,
-    protobufJava,
     jaxb    % Runtime,
     slf4j   % Runtime,
     stsSdk2 % Runtime,
