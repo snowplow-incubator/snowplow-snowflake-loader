@@ -94,12 +94,12 @@ object Config {
     webhook: Webhook.Config
   )
 
-  case class SetupErrorRetries(delay: FiniteDuration)
-  case class TransientErrorRetries(delay: FiniteDuration, attempts: Int)
+  case class CheckCommittedOffsetRetries(delay: FiniteDuration)
 
   case class Retries(
     setupErrors: Retrying.Config.ForSetup,
-    transientErrors: Retrying.Config.ForTransient
+    transientErrors: Retrying.Config.ForTransient,
+    checkCommittedOffset: CheckCommittedOffsetRetries
   )
 
   case class Http(client: HttpClient.Config)
@@ -126,11 +126,12 @@ object Config {
         case SentryM(None, _) =>
           None
       }
-    implicit val metricsDecoder     = deriveConfiguredDecoder[Metrics]
-    implicit val healthProbeDecoder = deriveConfiguredDecoder[HealthProbe]
-    implicit val monitoringDecoder  = deriveConfiguredDecoder[Monitoring]
-    implicit val retriesDecoder     = deriveConfiguredDecoder[Retries]
-    implicit val httpDecoder        = deriveConfiguredDecoder[Http]
+    implicit val metricsDecoder                = deriveConfiguredDecoder[Metrics]
+    implicit val healthProbeDecoder            = deriveConfiguredDecoder[HealthProbe]
+    implicit val monitoringDecoder             = deriveConfiguredDecoder[Monitoring]
+    implicit val committedOffsetRetriesDecoder = deriveConfiguredDecoder[CheckCommittedOffsetRetries]
+    implicit val retriesDecoder                = deriveConfiguredDecoder[Retries]
+    implicit val httpDecoder                   = deriveConfiguredDecoder[Http]
     implicit val licenseDecoder =
       AcceptedLicense.decoder(AcceptedLicense.DocumentationLink("https://docs.snowplow.io/limited-use-license-1.1/"))
     deriveConfiguredDecoder[Config[Source, Sink]]

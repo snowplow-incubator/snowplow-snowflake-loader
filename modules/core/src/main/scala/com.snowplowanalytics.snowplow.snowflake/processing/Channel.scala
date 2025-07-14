@@ -109,7 +109,7 @@ object Channel {
     for {
       client <- createClient(config, retriesConfig, appHealth)
     } yield new Opener[F] {
-      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F])
+      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, _))
     }
 
   def provider[F[_]: Async](
@@ -134,15 +134,16 @@ object Channel {
     Resource.makeFull(make)(_.close)
   }
 
-  private def impl[F[_]: Async](channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
+  private def impl[F[_]: Async](config: Config.CheckCommittedOffsetRetries, channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
     new CloseableChannel[F] {
 
       def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
         val attempt: F[WriteResult] = for {
-          response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, null))
+          offsetToken <- Sync[F].monotonic.map(_.toNanos.toString)
+          response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, offsetToken.toString))
           _ <- flushChannel[F](channel)
-          isValid <- Sync[F].delay(channel.isValid)
-        } yield if (isValid) WriteResult.WriteFailures(parseResponse(response)) else WriteResult.ChannelIsInvalid
+          _ <- waitForOffsetToken(config, channel, offsetToken)
+        } yield WriteResult.WriteFailures(parseResponse(response))
 
         attempt.recover {
           case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
@@ -164,6 +165,18 @@ object Channel {
                 // We have already handled errors associated with invalid channel
                 ()
             }
+    }
+
+  private def waitForOffsetToken[F[_]: Async](
+    config: Config.CheckCommittedOffsetRetries,
+    channel: SnowflakeStreamingIngestChannel,
+    offsetToken: String
+  ): F[Unit] =
+    Sync[F].untilDefinedM {
+      for {
+        _ <- Async[F].sleep(config.delay)
+        committedOffsetToken <- Sync[F].blocking(channel.getLatestCommittedOffsetToken())
+      } yield if (committedOffsetToken === offsetToken) Some(()) else None
     }
 
   private def parseResponse(response: InsertValidationResponse): List[WriteFailure] =

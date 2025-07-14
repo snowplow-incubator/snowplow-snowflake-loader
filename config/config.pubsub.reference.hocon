@@ -88,9 +88,9 @@
     "maxDelay": "1 second"
 
     # - Controls how many batches can we send simultaneously over the network to Snowflake.
-    # -- E.g. If there are 4 available processors, and uploadParallelismFactor = 2.5, then we send up to 10 batches in parallel
+    # -- E.g. If there are 4 available processors, and uploadParallelismFactor = 3.5, then we send up to 14 batches in parallel
     # -- Adjusting this value can cause the app to use more or less of the available CPU.
-    "uploadParallelismFactor":  2.5
+    "uploadParallelismFactor":  3.5
   }
 
   # -- Controls how the app splits the workload into concurrent batches which can be run in parallel.
@@ -108,11 +108,17 @@
       "delay": "30 seconds"
     }
 
-    # -- Configures exponential backoff  errors that are likely to be transient.
+    # -- Configures exponential backoff errors that are likely to be transient.
     # -- Examples include server errors and network errors
     "transientErrors": {
       "delay": "1 second"
       "attempts": 5
+    }
+
+    # -- Configures a delay in between flushing events to snowflake and fetching the latest offset
+    # -- token from snowflake to check the events are fully ingested.
+    "checkCommittedOffset": {
+      "delay": "100 millis"
     }
   }
 
