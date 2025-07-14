@@ -282,7 +282,11 @@ object ChannelProviderSpec {
     appHealth: AppHealth.Interface[IO, Alert, RuntimeService]
   )
 
-  def retriesConfig = Config.Retries(Retrying.Config.ForSetup(30.seconds), Retrying.Config.ForTransient(1.second, 5))
+  def retriesConfig = Config.Retries(
+    Retrying.Config.ForSetup(30.seconds),
+    Retrying.Config.ForTransient(1.second, 5),
+    Config.CheckCommittedOffsetRetries(100.millis)
+  )
 
   def control: IO[Control] =
     for {
