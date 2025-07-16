@@ -1,3 +1,11 @@
+Version 0.5.0 (2025-07-16)
+--------------------------
+Update key libraries for release (#5)
+Fix offset token usage when batch contains zero insertable events (#6)
+Use offset tokens to ensure at-least-once semantics (#4)
+Fix the setup alert for invalid hostname (#3)
+Update GitHub workflows (#2)
+
 Version 0.4.1 (2025-04-07)
 --------------------------
 Upgrade snowflake dependencies (#77)
