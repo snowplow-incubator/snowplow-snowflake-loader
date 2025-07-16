@@ -315,7 +315,7 @@ object ChannelProviderSpec {
     }
 
   private def testCloseableChannel(state: Ref[IO, Vector[Action]]): Channel.CloseableChannel[IO] = new Channel.CloseableChannel[IO] {
-    def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] = IO.pure(Channel.WriteResult.WriteFailures(Nil))
+    def write(rows: Vector[Map[String, AnyRef]]): IO[Channel.WriteResult] = IO.pure(Channel.WriteResult.WriteFailures(Nil))
 
     def close: IO[Unit] = state.update(_ :+ Action.ClosedChannel)
   }

@@ -209,11 +209,12 @@ object Processing {
     val attempt: F[BatchAfterTransform] =
       if (batch.toBeInserted.isEmpty)
         batch.pure[F]
-      else
+      else {
+        val toBeInserted = batch.toBeInserted.asIterable.map(_._2).toVector
         Sync[F].untilDefinedM {
           channelProvider.opened
             .use { channel =>
-              channel.write(batch.toBeInserted.asIterable.map(_._2))
+              channel.write(toBeInserted)
             }
             .flatMap {
               case Channel.WriteResult.ChannelIsInvalid =>
@@ -223,6 +224,7 @@ object Processing {
                 handleFailures(notWritten).map(Some(_))
             }
         }
+      }
 
     attempt
       .onError { _ =>

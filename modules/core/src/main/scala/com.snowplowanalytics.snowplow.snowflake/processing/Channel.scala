@@ -35,7 +35,7 @@ trait Channel[F[_]] {
    * @return
    *   List of the details of any insert failures. Empty list implies complete success.
    */
-  def write(rows: Iterable[Map[String, AnyRef]]): F[Channel.WriteResult]
+  def write(rows: Vector[Map[String, AnyRef]]): F[Channel.WriteResult]
 }
 
 object Channel {
@@ -137,12 +137,11 @@ object Channel {
   private def impl[F[_]: Async](config: Config.CheckCommittedOffsetRetries, channel: SnowflakeStreamingIngestChannel): CloseableChannel[F] =
     new CloseableChannel[F] {
 
-      def write(rows: Iterable[Map[String, AnyRef]]): F[WriteResult] = {
+      def write(rows: Vector[Map[String, AnyRef]]): F[WriteResult] = {
         val attempt: F[WriteResult] = for {
           offsetToken <- Sync[F].monotonic.map(_.toNanos.toString)
           response <- Sync[F].blocking(channel.insertRows(rows.map(_.asJava).asJava, offsetToken.toString))
-          _ <- flushChannel[F](channel)
-          _ <- waitForOffsetToken(config, channel, offsetToken)
+          _ <- if (rows.size > response.getErrorRowCount) waitForOffsetToken(config, channel, offsetToken) else Sync[F].unit
         } yield WriteResult.WriteFailures(parseResponse(response))
 
         attempt.recover {
@@ -172,12 +171,13 @@ object Channel {
     channel: SnowflakeStreamingIngestChannel,
     offsetToken: String
   ): F[Unit] =
-    Sync[F].untilDefinedM {
-      for {
-        _ <- Async[F].sleep(config.delay)
-        committedOffsetToken <- Sync[F].blocking(channel.getLatestCommittedOffsetToken())
-      } yield if (committedOffsetToken === offsetToken) Some(()) else None
-    }
+    flushChannel[F](channel) >>
+      Sync[F].untilDefinedM {
+        for {
+          _ <- Async[F].sleep(config.delay)
+          committedOffsetToken <- Sync[F].blocking(channel.getLatestCommittedOffsetToken())
+        } yield if (committedOffsetToken === offsetToken) Some(()) else None
+      }
 
   private def parseResponse(response: InsertValidationResponse): List[WriteFailure] =
     response.getInsertErrors.asScala.map { insertError =>

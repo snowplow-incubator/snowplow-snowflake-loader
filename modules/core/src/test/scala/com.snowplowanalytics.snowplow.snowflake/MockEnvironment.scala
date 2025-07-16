@@ -143,7 +143,7 @@ object MockEnvironment {
     Ref[IO].of(mockedResponses).map { responses =>
       val make = actionRef.update(_ :+ OpenedChannel).as {
         new Channel[IO] {
-          def write(rows: Iterable[Map[String, AnyRef]]): IO[Channel.WriteResult] =
+          def write(rows: Vector[Map[String, AnyRef]]): IO[Channel.WriteResult] =
             for {
               response <- responses.modify {
                             case head :: tail => (tail, head)
