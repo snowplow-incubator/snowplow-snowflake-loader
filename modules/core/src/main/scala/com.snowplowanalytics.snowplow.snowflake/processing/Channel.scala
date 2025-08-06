@@ -148,7 +148,7 @@ object Channel {
         } yield WriteResult.WriteFailures(parseResponse(response))
 
         attempt.recover {
-          case sfe: SFException if sfe.getVendorCode === SFErrorCode.INVALID_CHANNEL.getMessageCode =>
+          case sfe: SFException if statusCodesForInvalidChannel.contains(sfe.getVendorCode) =>
             WriteResult.ChannelIsInvalid
         }
       }
@@ -263,5 +263,14 @@ object Channel {
     Async[F].fromCompletableFuture {
       Async[F].delay(client.flush())
     }.void
+
+  /**
+   * Snowflake error codes that are expected when a channel is invalid
+   */
+  private val statusCodesForInvalidChannel: Set[String] =
+    Set(
+      SFErrorCode.INVALID_CHANNEL.getMessageCode,
+      SFErrorCode.CHANNEL_STATUS_INVALID.getMessageCode
+    )
 
 }
