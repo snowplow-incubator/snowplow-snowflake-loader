@@ -25,9 +25,10 @@ import scala.util.Try
 import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, HttpClient, Metrics => CommonMetrics, Retrying, Telemetry, Webhook}
 import com.snowplowanalytics.snowplow.runtime.HealthProbe.decoders._
 
-case class Config[+Source, +Sink](
+case class Config[+Factory, +Source, +Sink](
   input: Source,
   output: Config.Output[Sink],
+  streams: Factory,
   batching: Config.Batching,
   cpuParallelismFactor: BigDecimal,
   retries: Config.Retries,
@@ -104,7 +105,7 @@ object Config {
 
   case class Http(client: HttpClient.Config)
 
-  implicit def decoder[Source: Decoder, Sink: Decoder]: Decoder[Config[Source, Sink]] = {
+  implicit def decoder[Factory: Decoder, Source: Decoder, Sink: Decoder]: Decoder[Config[Factory, Source, Sink]] = {
     implicit val configuration = Configuration.default.withDiscriminator("type")
     implicit val urlDecoder = Decoder.decodeString.emapTry { str =>
       Try {
@@ -134,7 +135,7 @@ object Config {
     implicit val httpDecoder                   = deriveConfiguredDecoder[Http]
     implicit val licenseDecoder =
       AcceptedLicense.decoder(AcceptedLicense.DocumentationLink("https://docs.snowplow.io/limited-use-license-1.1/"))
-    deriveConfiguredDecoder[Config[Source, Sink]]
+    deriveConfiguredDecoder[Config[Factory, Source, Sink]]
   }
 
 }

@@ -10,12 +10,11 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
-import com.snowplowanalytics.snowplow.sources.pubsub.{PubsubSource, PubsubSourceConfig}
-import com.snowplowanalytics.snowplow.sinks.pubsub.{PubsubSink, PubsubSinkConfig}
+import com.snowplowanalytics.snowplow.streams.pubsub.{PubsubFactory, PubsubFactoryConfig, PubsubSinkConfigM, PubsubSourceConfig}
+import cats.Id
+import cats.effect.IO
 
-object GcpApp extends LoaderApp[PubsubSourceConfig, PubsubSinkConfig](BuildInfo) {
+object GcpApp extends LoaderApp[PubsubFactoryConfig, PubsubSourceConfig, PubsubSinkConfigM[Id]](BuildInfo) {
 
-  override def source: SourceProvider = PubsubSource.build(_)
-
-  override def badSink: SinkProvider = PubsubSink.resource(_)
+  override def toFactory: FactoryProvider = PubsubFactory.resource[IO](_)
 }

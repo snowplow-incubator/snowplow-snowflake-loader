@@ -14,9 +14,16 @@ import cats.effect.IO
 import cats.effect.kernel.{Ref, Resource, Unique}
 import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo}
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
-import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.streams.{
+  EventProcessingConfig,
+  EventProcessor,
+  ListOfList,
+  Sink,
+  Sinkable,
+  SourceAndAck,
+  TokenedEvents
+}
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
-import com.snowplowanalytics.snowplow.sources.{EventProcessingConfig, EventProcessor, SourceAndAck, TokenedEvents}
 import fs2.Stream
 import org.http4s.client.Client
 
@@ -123,13 +130,16 @@ object MockEnvironment {
     }
 
   private def testBadSink(mockedResponse: Response[Unit], state: Ref[IO, Vector[Action]]): Sink[IO] =
-    Sink[IO] { batch =>
-      mockedResponse match {
-        case Response.Success(_) =>
-          state.update(_ :+ SentToBad(batch.asIterable.size))
-        case Response.ExceptionThrown(value) =>
-          IO.raiseError(value)
-      }
+    new Sink[IO] {
+      def isHealthy: IO[Boolean] = IO.pure(true)
+
+      def sink(batch: ListOfList[Sinkable]): IO[Unit] =
+        mockedResponse match {
+          case Response.Success(_) =>
+            state.update(_ :+ SentToBad(batch.asIterable.size))
+          case Response.ExceptionThrown(value) =>
+            IO.raiseError(value)
+        }
     }
 
   private def testHttpClient: Client[IO] = Client[IO] { _ =>

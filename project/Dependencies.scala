@@ -36,7 +36,7 @@ object Dependencies {
     val kafkaClient = "3.9.1" // Version override
 
     // Snowplow
-    val streams = "0.12.0"
+    val streams = "0.13.1"
 
     // tests
     val specs2           = "4.20.0"

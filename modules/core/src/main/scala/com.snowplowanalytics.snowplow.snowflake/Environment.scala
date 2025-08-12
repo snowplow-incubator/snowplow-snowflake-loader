@@ -14,9 +14,8 @@ import cats.implicits._
 import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
 import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Webhook}
-import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.streams.{Factory, Sink, SourceAndAck}
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
-import com.snowplowanalytics.snowplow.sources.SourceAndAck
 import org.http4s.client.Client
 
 /**
@@ -46,21 +45,23 @@ case class Environment[F[_]](
 
 object Environment {
 
-  def fromConfig[F[_]: Async, SourceConfig, SinkConfig](
-    config: Config[SourceConfig, SinkConfig],
+  def fromConfig[F[_]: Async, FactoryConfig, SourceConfig, SinkConfig](
+    config: Config[FactoryConfig, SourceConfig, SinkConfig],
     appInfo: AppInfo,
-    toSource: SourceConfig => F[SourceAndAck[F]],
-    toSink: SinkConfig => Resource[F, Sink[F]]
+    toFactory: FactoryConfig => Resource[F, Factory[F, SourceConfig, SinkConfig]]
   ): Resource[F, Environment[F]] =
     for {
       _ <- Sentry.capturingAnyException(appInfo, config.monitoring.sentry)
-      sourceAndAck <- Resource.eval(toSource(config.input))
+      factory <- toFactory(config.streams)
+      sourceAndAck <- factory.source(config.input)
       sourceReporter = sourceAndAck.isHealthy(config.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
       appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
       httpClient <- HttpClient.resource[F](config.http.client)
       _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth)
       _ <- Webhook.resource(config.monitoring.webhook, appInfo, httpClient, appHealth)
-      badSink <- toSink(config.output.bad.sink).onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
+      badSink <- factory
+                   .sink(config.output.bad.sink)
+                   .onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
       metrics <- Resource.eval(Metrics.build(config.monitoring.metrics, sourceAndAck))
       tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries))
       cpuParallelism    = chooseCpuParallelism(config)
@@ -92,14 +93,14 @@ object Environment {
    * For bigger instances (more cores) we want more parallelism, so that cpu-intensive steps can
    * take advantage of all the cores.
    */
-  private def chooseCpuParallelism(config: Config[Any, Any]): Int =
+  private def chooseCpuParallelism(config: Config[Any, Any, Any]): Int =
     multiplyByCpuAndRoundUp(config.cpuParallelismFactor)
 
   /**
    * For bigger instances (more cores) we produce batches more quickly, and so need higher upload
    * parallelism so that uploading does not become bottleneck
    */
-  private def chooseUploadParallelism(config: Config[Any, Any]): Int =
+  private def chooseUploadParallelism(config: Config[Any, Any, Any]): Int =
     multiplyByCpuAndRoundUp(config.batching.uploadParallelismFactor)
 
   private def multiplyByCpuAndRoundUp(factor: BigDecimal): Int =

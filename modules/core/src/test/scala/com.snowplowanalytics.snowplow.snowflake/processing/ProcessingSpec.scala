@@ -16,7 +16,7 @@ import cats.effect.testkit.TestControl
 import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
 import com.snowplowanalytics.snowplow.snowflake.{MockEnvironment, RuntimeService}
 import com.snowplowanalytics.snowplow.snowflake.MockEnvironment.{Action, Mocks, Response}
-import com.snowplowanalytics.snowplow.sources.TokenedEvents
+import com.snowplowanalytics.snowplow.streams.TokenedEvents
 import fs2.{Chunk, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.specs2.Specification

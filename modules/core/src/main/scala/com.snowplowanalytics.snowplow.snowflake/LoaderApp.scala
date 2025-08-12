@@ -20,11 +20,10 @@ import org.typelevel.log4cats.slf4j.Slf4jLogger
 
 import scala.concurrent.duration.DurationInt
 
-import com.snowplowanalytics.snowplow.sources.SourceAndAck
-import com.snowplowanalytics.snowplow.sinks.Sink
+import com.snowplowanalytics.snowplow.streams.Factory
 import com.snowplowanalytics.snowplow.runtime.AppInfo
 
-abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
+abstract class LoaderApp[FactoryConfig: Decoder, SourceConfig: Decoder, SinkConfig: Decoder](
   info: AppInfo
 ) extends CommandIOApp(name = LoaderApp.helpCommand(info), header = info.dockerAlias, version = info.version) {
 
@@ -36,13 +35,11 @@ abstract class LoaderApp[SourceConfig: Decoder, SinkConfig: Decoder](
   override def onCpuStarvationWarn(metrics: CpuStarvationWarningMetrics): IO[Unit] =
     Logger[IO].debug(s"Cats Effect measured responsiveness in excess of ${metrics.starvationInterval * metrics.starvationThreshold}")
 
-  type SinkProvider   = SinkConfig => Resource[IO, Sink[IO]]
-  type SourceProvider = SourceConfig => IO[SourceAndAck[IO]]
+  type FactoryProvider = FactoryConfig => Resource[IO, Factory[IO, SourceConfig, SinkConfig]]
 
-  def source: SourceProvider
-  def badSink: SinkProvider
+  def toFactory: FactoryProvider
 
-  final def main: Opts[IO[ExitCode]] = Run.fromCli(info, source, badSink)
+  final def main: Opts[IO[ExitCode]] = Run.fromCli(info, toFactory)
 
 }
 
