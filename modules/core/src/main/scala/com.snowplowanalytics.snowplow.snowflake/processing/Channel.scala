@@ -16,6 +16,7 @@ import com.snowplowanalytics.snowplow.runtime.AppHealth
 import com.snowplowanalytics.snowplow.runtime.processing.Coldswap
 import com.snowplowanalytics.snowplow.snowflake.{Alert, Config, RuntimeService}
 import net.snowflake.ingest.streaming._
+import net.snowflake.ingest.streaming.DropChannelRequest
 import net.snowflake.ingest.utils.{ErrorCode => SFErrorCode, ParameterProvider, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -104,12 +105,16 @@ object Channel {
     retriesConfig: Config.Retries,
     appHealth: AppHealth.Interface[F, Alert, RuntimeService],
     index: Int
-  ): Resource[F, Opener[F]] =
+  ): Resource[F, Opener[F]] = {
+    val channelName = s"${config.channel}-$index"
     for {
       client <- createClient(config, retriesConfig, appHealth)
+      _ <- Resource.onFinalize(dropChannelIfItExists[F](client, channelName, config))
     } yield new Opener[F] {
-      def open: F[CloseableChannel[F]] = createChannel[F](config, client, index).map(impl[F](retriesConfig.checkCommittedOffset, client, _))
+      def open: F[CloseableChannel[F]] =
+        createChannel[F](config, client, channelName).map(impl[F](retriesConfig.checkCommittedOffset, client, _))
     }
+  }
 
   def provider[F[_]: Async](
     opener: Opener[F],
@@ -195,9 +200,8 @@ object Channel {
   private def createChannel[F[_]: Async](
     config: Config.Snowflake,
     client: SnowflakeStreamingIngestClient,
-    index: Int
+    channelName: String
   ): F[SnowflakeStreamingIngestChannel] = {
-    val channelName = s"${config.channel}-$index"
     val request = OpenChannelRequest
       .builder(channelName)
       .setDBName(config.database)
@@ -263,6 +267,32 @@ object Channel {
     Async[F].fromCompletableFuture {
       Async[F].delay(client.flush())
     }.void
+
+  /**
+   * Drops a Snowflake channel if it exists, ignoring any errors
+   */
+  private def dropChannelIfItExists[F[_]: Sync](
+    client: SnowflakeStreamingIngestClient,
+    channelName: String,
+    config: Config.Snowflake
+  ): F[Unit] =
+    Sync[F]
+      .blocking {
+        val request = DropChannelRequest
+          .builder(channelName)
+          .setDBName(config.database)
+          .setSchemaName(config.schema)
+          .setTableName(config.table)
+          .build()
+        client.dropChannel(request)
+      }
+      .recoverWith {
+        case sfe: SFException if sfe.getVendorCode === SFErrorCode.DROP_CHANNEL_FAILURE.getMessageCode =>
+          Logger[F].debug(s"Channel $channelName no longer exists during shutdown (expected)")
+        case ex: Exception =>
+          // Log message only (not full stacktrace) to avoid log spam with many channels
+          Logger[F].warn(s"Failed to drop channel $channelName during shutdown: ${ex.getMessage}")
+      }
 
   /**
    * Snowflake error codes that are expected when a channel is invalid
