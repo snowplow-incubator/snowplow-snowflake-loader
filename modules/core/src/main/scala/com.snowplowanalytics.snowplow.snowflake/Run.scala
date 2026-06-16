@@ -17,6 +17,7 @@ import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
 import io.circe.Decoder
 import com.monovore.decline.Opts
+import org.slf4j.bridge.SLF4JBridgeHandler
 
 import com.snowplowanalytics.snowplow.streams.Factory
 import com.snowplowanalytics.snowplow.snowflake.processing.Processing
@@ -42,7 +43,13 @@ object Run {
     pathToConfig: Path
   ): F[ExitCode] = {
 
+    val installJulBridge = Sync[F].delay {
+      SLF4JBridgeHandler.removeHandlersForRootLogger()
+      SLF4JBridgeHandler.install()
+    }
+
     val eitherT = for {
+      _ <- EitherT.right[String](installJulBridge)
       config <- ConfigParser.configFromFile[F, Config[FactoryConfig, SourceConfig, SinkConfig]](pathToConfig)
       _ <- EitherT.right[String](fromConfig(appInfo, toFactory, config))
     } yield ExitCode.Success

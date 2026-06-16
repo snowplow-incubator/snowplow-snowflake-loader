@@ -28,10 +28,6 @@
     # -- the same messages multiple times.
     "debounceRequests": "100 millis"
 
-    # -- Whether to use Pubsub's streaming-pull API. When true, the source maintains long-lived
-    # -- streaming connections to pubsub. When false, the source uses synchronous unary pulls.
-    "streamingPull": true
-
     # -- Configures how transient GRPC failures are retried
     "retries": {
       "transientErrors": {

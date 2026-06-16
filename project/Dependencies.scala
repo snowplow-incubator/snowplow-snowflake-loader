@@ -55,6 +55,7 @@ object Dependencies {
 
   // java
   val slf4j         = "org.slf4j" % "slf4j-simple"   % V.slf4j
+  val julToSlf4j    = "org.slf4j" % "jul-to-slf4j"   % V.slf4j
   val azureIdentity = "com.azure" % "azure-identity" % V.azureSdk
   val sentry        = "io.sentry" % "sentry"         % V.sentry
   val snowflakeIngest =
@@ -98,6 +99,7 @@ object Dependencies {
     decline,
     snowflakeIngest,
     snowflakeJdbc,
+    julToSlf4j,
     doobie,
     circeGenericExtra,
     commonsLang,

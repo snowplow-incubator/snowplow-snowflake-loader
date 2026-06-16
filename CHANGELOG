@@ -1,3 +1,9 @@
+Version 0.6.1 (2026-05-22)
+--------------------------
+Consume Snowman's async rollout dispatch (#21)
+Undocument streamingPull (#18)
+Route java.util.logging through SLF4J (#22)
+
 Version 0.6.0 (2026-05-13)
 --------------------------
 Bump dependencies to address CVEs (#19)
