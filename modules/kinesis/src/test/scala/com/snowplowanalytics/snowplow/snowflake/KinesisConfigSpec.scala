@@ -15,9 +15,16 @@ import cats.effect.testing.specs2.CatsEffect
 import cats.effect.{ExitCode, IO}
 import com.comcast.ip4s.Port
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.Metrics.StatsdConfig
-import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, ConfigParser, HttpClient, Retrying, Telemetry, Webhook}
-import com.snowplowanalytics.snowplow.streams.kinesis.{BackoffPolicy, KinesisSinkConfigM, KinesisSourceConfig}
+import com.snowplowanalytics.snowplow.runtime.Metrics.{PrometheusConfig, StatsdConfig}
+import com.snowplowanalytics.snowplow.runtime.{AcceptedLicense, ConfigParser, HttpClient, Retrying, Sentry, Telemetry, Webhook}
+import com.snowplowanalytics.snowplow.streams.compression.DecompressionConfig
+import com.snowplowanalytics.snowplow.streams.kinesis.{
+  BackoffPolicy,
+  KinesisHttpSourceConfig,
+  KinesisSinkConfig,
+  KinesisSinkConfigM,
+  KinesisSourceConfig
+}
 import com.snowplowanalytics.snowplow.snowflake.Config.Snowflake
 import org.http4s.implicits.http4sLiteralsSyntax
 import org.specs2.Specification
@@ -49,29 +56,34 @@ class KinesisConfigSpec extends Specification with CatsEffect {
       )
     )
 
-  private def assert(resource: String, expectedResult: Either[ExitCode, Config[Unit, KinesisSourceConfig, KinesisSinkConfigM[Id]]]) = {
+  private def assert(resource: String, expectedResult: Either[ExitCode, Config[Unit, KinesisHttpSourceConfig, KinesisSinkConfig]]) = {
     val path = Paths.get(getClass.getResource(resource).toURI)
-    ConfigParser.configFromFile[IO, Config[Unit, KinesisSourceConfig, KinesisSinkConfigM[Id]]](path).value.map { result =>
+    ConfigParser.configFromFile[IO, Config[Unit, KinesisHttpSourceConfig, KinesisSinkConfig]](path).value.map { result =>
       result must beEqualTo(expectedResult)
     }
   }
 }
 
 object KinesisConfigSpec {
-  private val minimalConfig = Config[Unit, KinesisSourceConfig, KinesisSinkConfigM[Id]](
-    input = KinesisSourceConfig(
-      appName                          = "snowplow-snowflake-loader",
-      streamName                       = "snowplow-enriched-events",
-      workerIdentifier                 = "testWorkerId",
-      initialPosition                  = KinesisSourceConfig.InitialPosition.Latest,
-      retrievalMode                    = KinesisSourceConfig.Retrieval.Polling(1000),
-      customEndpoint                   = None,
-      dynamodbCustomEndpoint           = None,
-      cloudwatchCustomEndpoint         = None,
-      leaseDuration                    = 10.seconds,
-      maxLeasesToStealAtOneTimeFactor  = BigDecimal(2),
-      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
-      debounceCheckpoints              = 10.seconds
+  private val minimalConfig = Config[Unit, KinesisHttpSourceConfig, KinesisSinkConfig](
+    input = KinesisHttpSourceConfig(
+      kinesis = KinesisSourceConfig(
+        appName                          = "snowplow-snowflake-loader",
+        streamName                       = "snowplow-enriched-events",
+        workerIdentifier                 = "testWorkerId",
+        initialPosition                  = KinesisSourceConfig.InitialPosition.Latest,
+        retrievalMode                    = KinesisSourceConfig.Retrieval.Polling(750, 1500.millis),
+        customEndpoint                   = None,
+        dynamodbCustomEndpoint           = None,
+        cloudwatchCustomEndpoint         = None,
+        leaseDuration                    = 10.seconds,
+        maxLeasesToStealAtOneTimeFactor  = BigDecimal(2),
+        checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
+        debounceCheckpoints              = 10.seconds,
+        maxRetries                       = 10,
+        apiCallAttemptTimeout            = 15.seconds
+      ),
+      http = None
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -97,7 +109,8 @@ object KinesisConfigSpec {
           throttledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
           recordLimit            = 500,
           byteLimit              = 5242880,
-          customEndpoint         = None
+          customEndpoint         = None,
+          maxRetries             = 10
         ),
         maxRecordSize = 1000000
       )
@@ -114,10 +127,10 @@ object KinesisConfigSpec {
       transientErrors      = Retrying.Config.ForTransient(delay = 1.second, attempts = 5),
       checkCommittedOffset = Config.CheckCommittedOffsetRetries(delay = 100.millis)
     ),
-    skipSchemas = List.empty,
+    skipSchemas   = List.empty,
+    decompression = DecompressionConfig(maxBytesInBatch = 5242880, maxBytesSinglePayload = 10000000),
     telemetry = Telemetry.Config(
       disable         = false,
-      interval        = 15.minutes,
       collectorUri    = uri"https://collector-g.snowplowanalytics.com",
       userProvidedId  = None,
       autoGeneratedId = None,
@@ -126,7 +139,7 @@ object KinesisConfigSpec {
       moduleVersion   = None
     ),
     monitoring = Config.Monitoring(
-      metrics     = Config.Metrics(None),
+      metrics     = Config.Metrics(None, PrometheusConfig(Map.empty)),
       sentry      = None,
       healthProbe = Config.HealthProbe(port = Port.fromInt(8000).get, unhealthyLatency = 5.minutes),
       webhook     = Webhook.Config(endpoint = None, tags = Map.empty, heartbeat = 5.minutes)
@@ -138,20 +151,25 @@ object KinesisConfigSpec {
   /**
    * Environment variables for Snowflake private key and passphrase are set in BuildSettings.scala
    */
-  private val extendedConfig = Config[Unit, KinesisSourceConfig, KinesisSinkConfigM[Id]](
-    input = KinesisSourceConfig(
-      appName                          = "snowplow-snowflake-loader",
-      streamName                       = "snowplow-enriched-events",
-      workerIdentifier                 = "testWorkerId",
-      initialPosition                  = KinesisSourceConfig.InitialPosition.TrimHorizon,
-      retrievalMode                    = KinesisSourceConfig.Retrieval.Polling(1000),
-      customEndpoint                   = None,
-      dynamodbCustomEndpoint           = None,
-      cloudwatchCustomEndpoint         = None,
-      leaseDuration                    = 10.seconds,
-      maxLeasesToStealAtOneTimeFactor  = BigDecimal(2),
-      checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
-      debounceCheckpoints              = 10.seconds
+  private val extendedConfig = Config[Unit, KinesisHttpSourceConfig, KinesisSinkConfig](
+    input = KinesisHttpSourceConfig(
+      kinesis = KinesisSourceConfig(
+        appName                          = "snowplow-snowflake-loader",
+        streamName                       = "snowplow-enriched-events",
+        workerIdentifier                 = "testWorkerId",
+        initialPosition                  = KinesisSourceConfig.InitialPosition.TrimHorizon,
+        retrievalMode                    = KinesisSourceConfig.Retrieval.Polling(1000, 1500.millis),
+        customEndpoint                   = None,
+        dynamodbCustomEndpoint           = None,
+        cloudwatchCustomEndpoint         = None,
+        leaseDuration                    = 10.seconds,
+        maxLeasesToStealAtOneTimeFactor  = BigDecimal(2),
+        checkpointThrottledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
+        debounceCheckpoints              = 10.seconds,
+        maxRetries                       = 10,
+        apiCallAttemptTimeout            = 15.seconds
+      ),
+      http = None
     ),
     output = Config.Output(
       good = Config.Snowflake(
@@ -177,7 +195,8 @@ object KinesisConfigSpec {
           throttledBackoffPolicy = BackoffPolicy(minBackoff = 100.millis, maxBackoff = 1.second),
           recordLimit            = 500,
           byteLimit              = 5242880,
-          customEndpoint         = None
+          customEndpoint         = None,
+          maxRetries             = 10
         ),
         maxRecordSize = 1000000
       )
@@ -200,9 +219,9 @@ object KinesisConfigSpec {
       SchemaCriterion.parse("iglu:com.acme/skipped3/jsonschema/1-*-*").get,
       SchemaCriterion.parse("iglu:com.acme/skipped4/jsonschema/*-*-*").get
     ),
+    decompression = DecompressionConfig(maxBytesInBatch = 5242880, maxBytesSinglePayload = 10000000),
     telemetry = Telemetry.Config(
       disable         = false,
-      interval        = 15.minutes,
       collectorUri    = uri"collector-g.snowplowanalytics.com",
       userProvidedId  = Some("my_pipeline"),
       autoGeneratedId = Some("hfy67e5ydhtrd"),
@@ -220,9 +239,10 @@ object KinesisConfigSpec {
             period   = 1.minute,
             prefix   = "snowplow.snowflake.loader"
           )
-        )
+        ),
+        prometheus = PrometheusConfig(Map("myTag" -> "xyz"))
       ),
-      sentry = Some(Config.SentryM[Id](dsn = "https://public@sentry.example.com/1", tags = Map("myTag" -> "xyz"))),
+      sentry = Some(Sentry.ConfigM[Id](dsn = "https://public@sentry.example.com/1", environment = None, tags = Map("myTag" -> "xyz"))),
       healthProbe = Config.HealthProbe(
         port             = Port.fromInt(8000).get,
         unhealthyLatency = 5.minutes

@@ -10,12 +10,13 @@
 
 package com.snowplowanalytics.snowplow.snowflake.processing
 
+import cats.data.NonEmptyList
 import cats.implicits._
 import cats.{Applicative, Foldable}
 import cats.effect.{Async, Sync}
 import cats.effect.kernel.Unique
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import fs2.{Chunk, Pipe, Stream}
+import fs2.{Pipe, Stream}
 import net.snowflake.ingest.utils.{ErrorCode, SFException}
 import org.typelevel.log4cats.Logger
 import org.typelevel.log4cats.slf4j.Slf4jLogger
@@ -26,10 +27,11 @@ import java.time.OffsetDateTime
 import java.time.Instant
 
 import com.snowplowanalytics.iglu.schemaddl.parquet.Caster
-import com.snowplowanalytics.snowplow.analytics.scalasdk.Event
+import com.snowplowanalytics.snowplow.analytics.scalasdk.{Event, ParsingError}
 import com.snowplowanalytics.snowplow.badrows.{BadRow, Payload => BadPayload, Processor => BadRowProcessor}
 import com.snowplowanalytics.snowplow.badrows.Payload.{RawPayload => BadRowRawPayload}
-import com.snowplowanalytics.snowplow.streams.{EventProcessingConfig, EventProcessor, ListOfList, TokenedEvents}
+import com.snowplowanalytics.snowplow.streams.{EventProcessingConfig, ListOfList}
+import com.snowplowanalytics.snowplow.streams.compression.Decompression._
 import com.snowplowanalytics.snowplow.snowflake.{Environment, RuntimeService}
 import com.snowplowanalytics.snowplow.runtime.syntax.foldable._
 import com.snowplowanalytics.snowplow.runtime.processing.BatchUp
@@ -41,9 +43,16 @@ object Processing {
 
   def stream[F[_]: Async](env: Environment[F]): Stream[F, Nothing] = {
     val eventProcessingConfig = EventProcessingConfig(EventProcessingConfig.NoWindowing, env.metrics.setLatency)
+    val badProcessor          = BadRowProcessor(env.appInfo.name, env.appInfo.version)
     Stream.eval(env.tableManager.initializeEventsTable()) *>
       Stream.eval(env.channels.head.opened.use_) *>
-      env.source.stream(eventProcessingConfig, eventProcessor(env))
+      env.source.decompressedStream(
+        eventProcessingConfig,
+        env.decompression,
+        eventProcessor(env, badProcessor),
+        badProcessor,
+        toBadRow(badProcessor)
+      )
   }
 
   /** Model used between stages of the processing pipeline */
@@ -53,8 +62,8 @@ object Processing {
     parseFailures: List[BadRow],
     transformFailures: List[BadRow],
     countBytes: Long,
-    countItems: Int,
-    token: Unique.Token,
+    countItems: Long,
+    token: Option[Unique.Token],
     earliestCollectorTstamp: Option[Instant]
   )
 
@@ -78,7 +87,7 @@ object Processing {
   private case class BatchAfterTransform(
     toBeInserted: ListOfList[EventWithTransform],
     origBatchBytes: Long,
-    origBatchCount: Int,
+    origBatchCount: Long,
     badAccumulated: ListOfList[BadRow],
     tokens: Vector[Unique.Token],
     earliestCollectorTstamp: Option[Instant]
@@ -119,17 +128,24 @@ object Processing {
       }
   }
 
-  private def eventProcessor[F[_]: Async](env: Environment[F]): EventProcessor[F] = { in =>
-    val badProcessor = BadRowProcessor(env.appInfo.name, env.appInfo.version)
-
-    in.through(parseAndTransform(env, badProcessor))
+  private def eventProcessor[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): DecompressedEventProcessor[F] =
+    _.through(parseAndTransform(env, badProcessor))
       .through(BatchUp.withTimeout(env.batching.maxBytes, env.batching.maxDelay))
       .through(writeToSnowflake(env, badProcessor))
       .through(setE2ELatencyMetric(env))
       .through(sendFailedEvents(env, badProcessor))
       .through(sendMetrics(env))
       .through(emitTokens)
-  }
+
+  private def toBadRow(processor: BadRowProcessor): DecompressionError => BadRow.LoaderParsingError =
+    err =>
+      BadRow.LoaderParsingError(
+        processor,
+        ParsingError.RowDecodingError(
+          NonEmptyList.of(ParsingError.RowDecodingErrorInfo.UnhandledRowDecodingError(err.message))
+        ),
+        BadRowRawPayload(err.payload)
+      )
 
   private def setE2ELatencyMetric[F[_]: Sync](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.evalTap {
@@ -144,11 +160,15 @@ object Processing {
       }
     }
 
-  private def parseAndTransform[F[_]: Async](env: Environment[F], badProcessor: BadRowProcessor): Pipe[F, TokenedEvents, TransformedBatch] =
-    _.parEvalMap(env.cpuParallelism) { case TokenedEvents(chunk, token) =>
+  private def parseAndTransform[F[_]: Async](
+    env: Environment[F],
+    badProcessor: BadRowProcessor
+  ): Pipe[F, DecompressedTokenedEvents, TransformedBatch] =
+    _.parEvalMap(env.cpuParallelism) { result =>
+      val payloads = result.payloads
       for {
-        numBytes <- Sync[F].delay(Foldable[Chunk].sumBytes(chunk))
-        (badRows, events) <- Foldable[Chunk].traverseSeparateUnordered(chunk) { bytes =>
+        numBytes <- Sync[F].delay(payloads.foldLeft(0L)(_ + _.remaining()))
+        (badRows, events) <- Foldable[List].traverseSeparateUnordered(payloads) { bytes =>
                                Sync[F].delay {
                                  Event.parseBytes(bytes).toEither.leftMap { failure =>
                                    val payload = BadRowRawPayload(StandardCharsets.UTF_8.decode(bytes).toString)
@@ -160,7 +180,15 @@ object Processing {
         loadTstamp = SnowflakeCaster.timestampValue(now)
         (transformBad, transformed) <- transformBatch(badProcessor, loadTstamp, events, env.schemasToSkip)
         earliestCollectorTstamp = events.view.map(_.collector_tstamp).minOption
-      } yield TransformedBatch(transformed, transformBad, badRows, numBytes, chunk.size, token, earliestCollectorTstamp)
+      } yield TransformedBatch(
+        transformed,
+        transformBad,
+        badRows ::: result.bad,
+        numBytes,
+        payloads.size.toLong + result.bad.size,
+        result.ack,
+        earliestCollectorTstamp
+      )
     }
 
   private def transformBatch[F[_]: Sync](
@@ -362,8 +390,7 @@ object Processing {
 
   private def sendMetrics[F[_]: Applicative](env: Environment[F]): Pipe[F, BatchAfterTransform, BatchAfterTransform] =
     _.evalTap { batch =>
-      val countBad = batch.badAccumulated.asIterable.size
-      env.metrics.addGood(batch.origBatchCount - countBad) *> env.metrics.addBad(countBad)
+      env.metrics.addGood(batch.origBatchCount - batch.badAccumulated.size) *> env.metrics.addBad(batch.badAccumulated.size)
     }
 
   private def emitTokens[F[_]]: Pipe[F, BatchAfterTransform, Unique.Token] =
@@ -381,7 +408,7 @@ object Processing {
           origBatchBytes = b.origBatchBytes + a.countBytes,
           origBatchCount = b.origBatchCount + a.countItems,
           badAccumulated = b.badAccumulated.prepend(a.parseFailures).prepend(a.transformFailures),
-          tokens         = b.tokens :+ a.token,
+          tokens         = b.tokens :++ a.token,
           chooseEarliestTstamp(a.earliestCollectorTstamp, b.earliestCollectorTstamp)
         )
 
@@ -391,7 +418,7 @@ object Processing {
           a.countBytes,
           a.countItems,
           ListOfList.ofLists(a.parseFailures, a.transformFailures),
-          Vector(a.token),
+          a.token.toVector,
           a.earliestCollectorTstamp
         )
 

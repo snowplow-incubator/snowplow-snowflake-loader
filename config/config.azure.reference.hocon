@@ -15,6 +15,10 @@
     # -- we decrease the number of requests made to the kafka broker
     debounceCommitOffsets: "10 seconds"
 
+    # -- The time to wait for offset commits to complete. If an offset commit doesn't complete
+    # -- within this time, a CommitTimeoutException will be raised instead.
+    commitTimeout: "15 seconds"
+
     # -- Any valid Kafka consumer config options
     consumerConf: {
       "group.id": "snowplow-snowflake-loader"
@@ -129,6 +133,21 @@
     "iglu:com.acme/skipped4/jsonschema/*-*-*"
   ]
 
+  # -- Configures behavior of decompresses incoming data
+  "decompression": {
+
+    # -- A cutoff used when incrementally adding events to a batch. The batch is emitted immediately
+    # -- after this cutoff size is reached. This config parameter is needed to protect the app's memory.
+    # -- Bear in mind a 1MB compressed message could become HUGE after decompression.
+    # -- This is also used to batch together events from consecutive compressed records inside a chunk.
+    "maxBytesInBatch": 5242880
+
+    # -- Each individual event should not exceed this size after decompression.
+    # -- Events exceeding this size become a size violation type of bad row.
+    # -- This config parameter is needed to protect the app's memory.
+    "maxBytesSinglePayload": 10000000
+  }
+
   "monitoring": {
     "metrics": {
 
@@ -147,6 +166,15 @@
 
         # -- Prefix used for the metric name when sending to statsd
         "prefix": "snowplow.snowflake.loader"
+      }
+
+      # -- Expose runtime metrics on the Prometheus scrape endpoint served by the health probe port
+      "prometheus": {
+
+        # -- Map of key/value pairs added to every exported metric
+        "tags": {
+          "myTag": "xyz"
+        }
       }
     }
 
@@ -187,20 +215,8 @@
     # -- Set to true to disable telemetry
     "disable": false
 
-    # -- Interval for the heartbeat event
-    "interval": 15 minutes
-
-    # -- HTTP method used to send the heartbeat event
-    "method": POST
-
     # -- URI of the collector receiving the heartbeat event
     "collectorUri": collector-g.snowplowanalytics.com
-
-    # -- Port of the collector receiving the heartbeat event
-    "collectorPort": 443
-
-    # -- Whether to use https or not
-    "secure": true
 
     # -- Identifier intended to tie events together across modules,
     # -- infrastructure and apps when used consistently

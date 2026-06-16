@@ -10,7 +10,6 @@
 
 package com.snowplowanalytics.snowplow.snowflake.processing
 
-import cats.implicits._
 import cats.effect.{IO, Ref}
 import cats.effect.std.Supervisor
 import org.specs2.Specification

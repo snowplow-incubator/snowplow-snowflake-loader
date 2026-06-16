@@ -10,9 +10,7 @@
 
 package com.snowplowanalytics.snowplow.snowflake
 
-import cats.Id
-
-import com.snowplowanalytics.snowplow.streams.kafka.{AzureAuthenticationCallbackHandler, KafkaFactory, KafkaSinkConfigM, KafkaSourceConfig}
+import com.snowplowanalytics.snowplow.streams.kafka.{AzureAuthenticationCallbackHandler, KafkaFactory, KafkaSinkConfig, KafkaSourceConfig}
 import cats.effect.IO
 
 // We need separate instances of callback handler with separate source and
@@ -28,7 +26,7 @@ class SourceAuthHandler extends AzureAuthenticationCallbackHandler
 
 class SinkAuthHandler extends AzureAuthenticationCallbackHandler
 
-object AzureApp extends LoaderApp[Unit, KafkaSourceConfig, KafkaSinkConfigM[Id]](BuildInfo) {
+object AzureApp extends LoaderApp[Unit, KafkaSourceConfig, KafkaSinkConfig](BuildInfo) {
 
   override def toFactory: FactoryProvider = _ => KafkaFactory.resource[IO]
 }

@@ -1,3 +1,13 @@
+Version 0.6.0 (2026-05-13)
+--------------------------
+Bump dependencies to address CVEs (#19)
+Bump common-streams to 0.24.1 (#19)
+Use Long for metrics (#17)
+Bump common-streams to 0.24.0 (#15)
+Add Claude Code GitHub Action workflow (#16)
+Update sync workflow for snowplow-snowflake-loader (#13)
+Add Snowman QA test integration (#12)
+
 Version 0.5.1 (2025-08-14)
 --------------------------
 Add channel cleanup on shutdown (#11)

@@ -23,6 +23,7 @@ import com.snowplowanalytics.snowplow.streams.{
   SourceAndAck,
   TokenedEvents
 }
+import com.snowplowanalytics.snowplow.streams.compression.DecompressionConfig
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import fs2.Stream
 import org.http4s.client.Client
@@ -42,8 +43,8 @@ object MockEnvironment {
     case object ClosedChannel extends Action
     case object OpenedChannel extends Action
     case class WroteRowsToSnowflake(rowCount: Int) extends Action
-    case class AddedGoodCountMetric(count: Int) extends Action
-    case class AddedBadCountMetric(count: Int) extends Action
+    case class AddedGoodCountMetric(count: Long) extends Action
+    case class AddedBadCountMetric(count: Long) extends Action
     case class SetLatencyMetric(latency: FiniteDuration) extends Action
     case class SetE2ELatencyMetric(e2eLatency: FiniteDuration) extends Action
     case class BecameUnhealthy(service: RuntimeService) extends Action
@@ -74,14 +75,16 @@ object MockEnvironment {
         ),
         cpuParallelism = 2,
         schemasToSkip  = List.empty,
-        badRowMaxSize  = 1000000
+        badRowMaxSize  = 1000000,
+        decompression  = mocks.decompression
       )
       MockEnvironment(state, env)
     }
 
   final case class Mocks(
     channelResponses: List[Response[Channel.WriteResult]],
-    badSinkResponse: Response[Unit]
+    badSinkResponse: Response[Unit],
+    decompression: DecompressionConfig = DecompressionConfig(maxBytesInBatch = 5242880, maxBytesSinglePayload = 10000000)
   )
 
   object Mocks {
@@ -185,10 +188,10 @@ object MockEnvironment {
     }
 
   def testMetrics(ref: Ref[IO, Vector[Action]]): Metrics[IO] = new Metrics[IO] {
-    def addBad(count: Int): IO[Unit] =
+    def addBad(count: Long): IO[Unit] =
       ref.update(_ :+ AddedBadCountMetric(count))
 
-    def addGood(count: Int): IO[Unit] =
+    def addGood(count: Long): IO[Unit] =
       ref.update(_ :+ AddedGoodCountMetric(count))
 
     def setLatency(latency: FiniteDuration): IO[Unit] =
@@ -197,6 +200,7 @@ object MockEnvironment {
     def setE2ELatency(e2eLatency: FiniteDuration): IO[Unit] =
       ref.update(_ :+ SetE2ELatencyMetric(e2eLatency))
 
+    def scrape: IO[String]          = IO.pure("")
     def report: Stream[IO, Nothing] = Stream.never[IO]
   }
 

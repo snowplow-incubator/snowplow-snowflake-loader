@@ -13,8 +13,9 @@ package com.snowplowanalytics.snowplow.snowflake
 import cats.implicits._
 import cats.effect.{Async, Resource}
 import com.snowplowanalytics.iglu.core.SchemaCriterion
-import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Webhook}
+import com.snowplowanalytics.snowplow.runtime.{AppHealth, AppInfo, HealthProbe, HttpClient, Sentry, Webhook}
 import com.snowplowanalytics.snowplow.streams.{Factory, Sink, SourceAndAck}
+import com.snowplowanalytics.snowplow.streams.compression.DecompressionConfig
 import com.snowplowanalytics.snowplow.snowflake.processing.{Channel, TableManager}
 import org.http4s.client.Client
 
@@ -40,7 +41,8 @@ case class Environment[F[_]](
   batching: Config.Batching,
   cpuParallelism: Int,
   schemasToSkip: List[SchemaCriterion],
-  badRowMaxSize: Int
+  badRowMaxSize: Int,
+  decompression: DecompressionConfig
 )
 
 object Environment {
@@ -51,18 +53,18 @@ object Environment {
     toFactory: FactoryConfig => Resource[F, Factory[F, SourceConfig, SinkConfig]]
   ): Resource[F, Environment[F]] =
     for {
-      _ <- Sentry.capturingAnyException(appInfo, config.monitoring.sentry)
+      _ <- Sentry.enable[F](appInfo, config.monitoring.sentry)
       factory <- toFactory(config.streams)
       sourceAndAck <- factory.source(config.input)
       sourceReporter = sourceAndAck.isHealthy(config.monitoring.healthProbe.unhealthyLatency).map(_.showIfUnhealthy)
       appHealth <- Resource.eval(AppHealth.init[F, Alert, RuntimeService](List(sourceReporter)))
       httpClient <- HttpClient.resource[F](config.http.client)
-      _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth)
+      metrics <- Metrics.build(config.monitoring.metrics, sourceAndAck)
+      _ <- HealthProbe.resource(config.monitoring.healthProbe.port, appHealth, metrics.scrape)
       _ <- Webhook.resource(config.monitoring.webhook, appInfo, httpClient, appHealth)
       badSink <- factory
                    .sink(config.output.bad.sink)
                    .onError(_ => Resource.eval(appHealth.beUnhealthyForRuntimeService(RuntimeService.BadSink)))
-      metrics <- Resource.eval(Metrics.build(config.monitoring.metrics, sourceAndAck))
       tableManager <- Resource.eval(TableManager.make(config.output.good, appHealth, config.retries))
       cpuParallelism    = chooseCpuParallelism(config)
       uploadParallelism = chooseUploadParallelism(config)
@@ -84,7 +86,8 @@ object Environment {
       batching       = config.batching,
       cpuParallelism = cpuParallelism,
       schemasToSkip  = config.skipSchemas,
-      badRowMaxSize  = config.output.bad.maxRecordSize
+      badRowMaxSize  = config.output.bad.maxRecordSize,
+      decompression  = config.decompression
     )
 
   /**

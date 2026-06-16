@@ -31,7 +31,9 @@ object SnowflakeRetrying {
   )(
     action: F[A]
   ): F[A] =
-    Retrying.withRetries(appHealth, config.transientErrors, config.setupErrors, RuntimeService.Snowflake, toAlert, isSetupError)(action)
+    Retrying.withRetries(appHealth, config.transientErrors, config.setupErrors, RuntimeService.Snowflake, toAlert, isSetupError)(_ =>
+      action
+    )
 
   /** Is an error associated with setting up Snowflake as a destination */
   private def isSetupError: PartialFunction[Throwable, String] = {

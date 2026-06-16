@@ -13,11 +13,11 @@
     "parallelPullFactor": 0.5
 
     # -- Pubsub ack deadlines are extended for this duration when needed.
-    "durationPerAckExtension": "60 seconds"
+    "durationPerAckExtension": "15 seconds"
 
     # -- Controls when ack deadlines are re-extended, for a message that is close to exceeding its ack deadline.
-    # -- For example, if `durationPerAckExtension` is `60 seconds` and `minRemainingAckDeadline` is `0.1` then the Source
-    # -- will wait until there is `6 seconds` left of the remining deadline, before re-extending the message deadline.
+    # -- For example, if `durationPerAckExtension` is `15 seconds` and `minRemainingAckDeadline` is `0.1` then the Source
+    # -- will wait until there is `1.5 seconds` left of the remining deadline, before re-extending the message deadline.
     "minRemainingAckDeadline": 0.1
 
     # -- How many pubsub messages to pull from the server in a single request.
@@ -27,6 +27,20 @@
     # -- Under some circumstances, this was found to slightly alleviate a problem in which pubsub might re-deliver
     # -- the same messages multiple times.
     "debounceRequests": "100 millis"
+
+    # -- Whether to use Pubsub's streaming-pull API. When true, the source maintains long-lived
+    # -- streaming connections to pubsub. When false, the source uses synchronous unary pulls.
+    "streamingPull": true
+
+    # -- Configures how transient GRPC failures are retried
+    "retries": {
+      "transientErrors": {
+        # -- Backoff delay for follow-up attempts
+        "delay": "100 millis"
+        # -- Max number of attempts, after which the loader will crash and exit
+        "attempts": 10
+      }
+    }
   }
 
   "output": {
@@ -75,6 +89,16 @@
       "batchSize": 100
       # -- Failed events to pubsub in batches not exceeding this size number of bytes
       "requestByteThreshold": 1000000
+
+      # -- Configures how transient GRPC failures are retried
+      "retries": {
+        "transientErrors": {
+          # -- Backoff delay for follow-up attempts
+          "delay": "100 millis"
+          # -- Max number of attempts, after which the loader will crash and exit
+          "attempts": 10
+        }
+      }
     }
 
   }
@@ -130,6 +154,21 @@
     "iglu:com.acme/skipped4/jsonschema/*-*-*"
   ]
 
+  # -- Configures behavior of decompresses incoming data
+  "decompression": {
+
+    # -- A cutoff used when incrementally adding events to a batch. The batch is emitted immediately
+    # -- after this cutoff size is reached. This config parameter is needed to protect the app's memory.
+    # -- Bear in mind a 1MB compressed message could become HUGE after decompression.
+    # -- This is also used to batch together events from consecutive compressed records inside a chunk.
+    "maxBytesInBatch": 5242880
+
+    # -- Each individual event should not exceed this size after decompression.
+    # -- Events exceeding this size become a size violation type of bad row.
+    # -- This config parameter is needed to protect the app's memory.
+    "maxBytesSinglePayload": 10000000
+  }
+
   "monitoring": {
     "metrics": {
 
@@ -148,6 +187,15 @@
 
         # -- Prefix used for the metric name when sending to statsd
         "prefix": "snowplow.snowflake.loader"
+      }
+
+      # -- Expose runtime metrics on the Prometheus scrape endpoint served by the health probe port
+      "prometheus": {
+
+        # -- Map of key/value pairs added to every exported metric
+        "tags": {
+          "myTag": "xyz"
+        }
       }
     }
 
@@ -188,20 +236,8 @@
     # -- Set to true to disable telemetry
     "disable": false
 
-    # -- Interval for the heartbeat event
-    "interval": 15 minutes
-
-    # -- HTTP method used to send the heartbeat event
-    "method": POST
-
     # -- URI of the collector receiving the heartbeat event
     "collectorUri": collector-g.snowplowanalytics.com
-
-    # -- Port of the collector receiving the heartbeat event
-    "collectorPort": 443
-
-    # -- Whether to use https or not
-    "secure": true
 
     # -- Identifier intended to tie events together across modules,
     # -- infrastructure and apps when used consistently
